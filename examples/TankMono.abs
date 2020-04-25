@@ -19,7 +19,7 @@ class CSingleTank(Real inVal){
         await diff level <= 3 & drain <= 0 | level >= 10 & drain >= 0; 
         if(level <= 3) drain =  1/2;
         else           drain = -1/2;
-        this.ctrl();
+        this!ctrl();
     }
 
 }
