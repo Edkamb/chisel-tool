@@ -98,12 +98,18 @@ class Main : CliktCommand() {
                             val pre = extractSpec(cDecl, "Requires")
                             val inv =  extractSpec(cDecl.physical, "ObjInv")
                             println("Chisel  : Extracted precondition $pre and invariant $inv for ${tt.path}")
-                            val ph = cDecl.physical
-                            //phyiscal block
+                            val trPh = extractPhysical(cDecl.physical)
+
                             for(mDecl in cDecl.methods){
+                                val init = translateGuard(extractInitial(mDecl))
+                                val impl  = extractImpl(mDecl)
                                 println("Chisel  : Found method ${mDecl.methodSig.name}")
-                                println("Chisel  :        with initial ${translateGuard(extractInitial(mDecl))}")
-                                println("Chisel  :        with implementation ${extractImpl(mDecl)}")
+                                println("Chisel  :        with initial $init")
+                                println("Chisel  :        with implementation $impl")
+                                println("Chisel  :        with behavior $trPh & true")
+                                println("Chisel  :        proof obligation:")
+                                println("Chisel  :        $inv -> [?$init;$impl]($inv && [$trPh & true]($inv))")
+
                             }
                         }
                         else throw Exception("non-physical classes not supported yet")
@@ -128,11 +134,15 @@ fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : 
             }
             val annotated = annotation.getChild(0) as DataConstructorExp
             if(annotated.constructor != expectedSpec) continue
-            val next = annotated.getParam(0) as Exp
+            val next = (annotated.getParam(0) as StringLiteral).content
             if (!multipleAllowed) break
             ret = "($ret) && ($next)"
         }
     return ret
+}
+
+fun extractPhysical(physicalImpl: PhysicalImpl) : String{
+    return physicalImpl.fields.joinToString(", ") { translateExpr(it.initExp) }
 }
 
 fun extractInitial(mImpl : MethodImpl) : Guard?{
@@ -191,8 +201,10 @@ fun translateExpr(exp: Exp) : String{
         is OrBoolExp -> return "(${translateExpr(exp.left)}||${translateExpr(exp.right)})"
         is AndBoolExp -> return "(${translateExpr(exp.left)}&&${translateExpr(exp.right)})"
         is IntLiteral -> return "(${exp.content})"
-        is FieldUse -> return "(${exp})"
-        is VarUse -> return "(${exp})"
+        is FieldUse -> return "$exp"
+        is VarUse -> return "$exp"
+        is DiffOpExp -> return "(${translateExpr(exp.getChild(0) as Exp)}')"
+        is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
 }
