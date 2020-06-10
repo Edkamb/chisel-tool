@@ -3,7 +3,7 @@ package org.abs_models.chisel.main
 import abs.frontend.ast.*
 import java.io.File
 
-class ClassContainer(private val cDecl : ClassDecl) {
+class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOption) {
     private val name : String = cDecl.name
     private val pre = extractSpec(cDecl, "Requires")
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
@@ -12,7 +12,8 @@ class ClassContainer(private val cDecl : ClassDecl) {
     private var fields : List<String> = emptyList()
 
     init {
-        println("Chisel  : Extracted precondition $pre and invariant $inv for $name")
+        if(reg == RegionOption.SplitRegion)
+            throw Exception("option to use region $reg not supported yet")
         var initialProg = "?true"
         for(fDecl in cDecl.paramList ){
             fields = fields + fDecl.name
@@ -28,19 +29,31 @@ class ClassContainer(private val cDecl : ClassDecl) {
         }
         initialProg += ";"
         val res = proofObligation("$pre -> [$initialProg]$inv", "/tmp/chisel/$name", "init.kyx")
-        println("Chisel  : First proof obligation:\n$res")
+        println("Chisel  : First proof obligation:\n$res\n")
     }
 
     fun fill() {
         for(mDecl in cDecl.methods){
             val init = translateGuard(extractInitial(mDecl))
             val impl  = extractImpl(mDecl)
-            println("Chisel  : Found method ${mDecl.methodSig.name}")
-            println("Chisel  :        with initial $init")
-            println("Chisel  :        with implementation $impl")
-            println("Chisel  :        with behavior $trPh & true")
-            println("Chisel  :        proof obligation:")
-            println("Chisel  :        $inv -> [?$init;$impl]($inv & [$trPh & true]$inv)")
+            val post = when(reg){
+                RegionOption.BasicRegion -> {
+                    if(impl.second) inv                          //if no field is accessed, the method needs only to check method calls
+                    else            "($inv & [{$trPh & true}]$inv)"
+                }
+                RegionOption.UniformRegion -> {
+                    if(impl.second) inv
+                    else{
+                        val guards = impl.third.map { extractInitial(find(it, cDecl) )}
+                        val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
+                        val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                        "($inv & [{$trPh & $region}]$inv)"
+                    }
+                }
+                else -> throw Exception("option to use region $reg not supported yet")
+            }
+            val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx")
+            println("Chisel  : Method proof obligation:\n$res\n")
 
         }
     }
@@ -82,22 +95,29 @@ fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : 
 }
 
 fun extractPhysical(physicalImpl: PhysicalImpl) : String{
-    return physicalImpl.fields.joinToString(", ") { translateExpr(it.initExp) }
+    return physicalImpl.fields.joinToString(", ") {
+        val exp = it.initExp as DifferentialExp
+        if(exp.left is DiffOpExp){
+            translateExpr(exp.left) + " =" + translateExpr(exp.right)
+        } else throw java.lang.Exception("Only ODEs are supported for translation to KeYmaera X, LHS found: ${exp.left}")
+    }
 }
 
 fun extractInitial(mImpl : MethodImpl) : Guard?{
     val lead = mImpl.block.getStmt(0)
-    return if(lead is AwaitStmt){
+    return if(lead is AwaitStmt && lead.guard is DifferentialGuard){
         lead.guard
     }else null
 }
 
 
-fun extractImpl(mImpl : MethodImpl) : String{
+fun extractImpl(mImpl : MethodImpl) : Triple<String, Boolean, Set<MethodSig>>{
     val init = if(extractInitial(mImpl) == null) 0 else 1
     val sofar = emptyList<String>().toMutableList()
     for(i in init .. mImpl.block.numStmt){
+        if(mImpl.block.getStmt(i) is AssignStmt)
         sofar += translateStmt(mImpl.block.getStmt(i))
     }
-    return sofar.joinToString(";")
+    return Triple(sofar.joinToString(";"), isClean(mImpl.block), getCalled(mImpl.block))
 }
+

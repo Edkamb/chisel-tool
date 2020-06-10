@@ -2,6 +2,29 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 
+
+fun isClean(stmt: Stmt?) : Boolean{
+    if(stmt == null) return true
+    when(stmt) {
+        is AssignStmt -> {
+            return false
+        }
+        is IfStmt -> {
+            return isClean(stmt.then) && isClean(stmt.`else`)
+        }
+        is WhileStmt -> {
+            return isClean(stmt.body)
+        }
+        is Block -> {
+            return stmt.stmts.all { isClean(it) }
+        }
+        is CaseStmt -> {
+            return stmt.branchs.map { it.right }.all { isClean(it) }
+        }
+        else -> return true
+    }
+}
+
 fun translateStmt(stmt: Stmt?) : String{
     if(stmt == null) return "skip"
     when(stmt){
@@ -16,6 +39,10 @@ fun translateStmt(stmt: Stmt?) : String{
             return "if(${translateExpr(stmt.condition)}) ${translateStmt(stmt.then)} else  ${translateStmt(stmt.`else`)} "
         }
         is ExpressionStmt -> {
+            if(stmt is Call){
+                if(stmt.callee.toString() == "this") "skip"
+                else throw Exception("Translation not supported yet: $stmt")
+            }
             return "skip"
         }
         is Block -> {
@@ -43,7 +70,7 @@ fun translateExpr(exp: Exp) : String{
         is IntLiteral -> return "(${exp.content})"
         is FieldUse -> return "$exp"
         is VarUse -> return "$exp"
-        is DiffOpExp -> return "(${translateExpr(exp.getChild(0) as Exp)}')"
+        is DiffOpExp -> return "${translateExpr(exp.getChild(0) as Exp)}'"
         is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
@@ -61,4 +88,36 @@ fun translateGuard(exp: Guard?) : String{
         is ClaimGuard -> "true"
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
+}
+
+
+fun getCalled(stmt: Stmt?): Set<MethodSig> {
+    if(stmt == null) return emptySet()
+    when(stmt) {
+        is AssignStmt -> {
+            return if(stmt.callExpression is Call) setOf(stmt.callExpression.methodSig)
+            else emptySet()
+        }
+        is ExpressionStmt -> {
+            return if(stmt.exp is Call) setOf(stmt.callExpression.methodSig)
+            else emptySet()
+        }
+        is IfStmt -> {
+            return getCalled(stmt.then) + getCalled(stmt.`else`)
+        }
+        is WhileStmt -> {
+            return getCalled(stmt.body)
+        }
+        is Block -> {
+            return stmt.stmts.fold(emptySet(), { acc, nx -> acc + getCalled(nx) })
+        }
+        is CaseStmt -> {
+            return stmt.branchs.fold(emptySet(), { acc, nx -> acc + getCalled(nx.right) })
+        }
+        else -> return emptySet()
+    }
+}
+
+fun find(methodSig: MethodSig, classDecl: ClassDecl) : MethodImpl{
+    return classDecl.methods.first { it.methodSig.matches(methodSig)}
 }

@@ -37,8 +37,22 @@ sealed class ChiselOption{
     object FullOption : ChiselOption()
 }
 
+
+sealed class RegionOption{
+    object BasicRegion : RegionOption()
+    object UniformRegion : RegionOption()
+    object SplitRegion : RegionOption()
+}
+
 class Main : CliktCommand() {
     private val filePath by argument(help = "path to ABS file").path().multiple()
+
+    private val regionOpt : RegionOption by mutuallyExclusiveOptions<RegionOption>(
+        option(help="Does not compute any regions").switch("--basic" to RegionOption.BasicRegion),
+        option(help="Computes regions using the called methods").switch("--uniform" to RegionOption.UniformRegion),
+        option(help="Computes regions using the called methods and controllers").switch("--split" to RegionOption.SplitRegion)
+    ).single().required()
+
 
     private val target : ChiselOption by mutuallyExclusiveOptions<ChiselOption>(
         option("--method","-m",help="Verifies a single method <module>.<class.<method>")
@@ -53,7 +67,7 @@ class Main : CliktCommand() {
             .convert {  ChiselOption.AllClassOption(it) as ChiselOption }
             .validate { require((it as ChiselOption.AllClassOption).path.split(".").size == 2,
                 lazyMessage = {"invalid fully qualified class name $it"}) },
-        option("--directclass","-d",help="encodes <module>.<class> directly into a double loop structure")
+        option("--directclass","-d",help="encodes <module>.<class> directly into a double loop structure (LITES approach)")
             .convert {  ChiselOption.DirectClassOption(it) as ChiselOption }
             .validate { require((it as ChiselOption.AllClassOption).path.split(".").size == 2,
                 lazyMessage = {"invalid fully qualified class name $it"}) },
@@ -65,7 +79,6 @@ class Main : CliktCommand() {
     private val verbose    by   option("--verbose", "-v",help="verbosity output level").int().restrictTo(Verbosity.values().indices).default(Verbosity.NORMAL.ordinal)
 
     override fun run() {
-        println("got $filePath")
         verbosity = Verbosity.values()[verbose]
         outPath = "$out"
 
@@ -95,7 +108,7 @@ class Main : CliktCommand() {
                     val cDecl = mDecl.declList.firstOrNull { it.name == tt.path.split(".")[1]}
                     if(cDecl != null && cDecl is ClassDecl) {
                         if(cDecl.hasPhysical()) {
-                            val clazzCont = ClassContainer(cDecl)
+                            val clazzCont = ClassContainer(cDecl, regionOpt)
                             clazzCont.fill()
                         }
                         else throw Exception("non-physical classes not supported, please use Crowbar instead")
@@ -104,7 +117,7 @@ class Main : CliktCommand() {
                 }
                 else throw Exception("module not found")
             }
-            else -> throw Exception("not supported yer")
+            else -> throw Exception("option $target not supported yet")
         }
 
         println("done")
