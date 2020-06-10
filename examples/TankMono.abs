@@ -1,6 +1,6 @@
 module NTank;
 
-data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String);
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String);
 
 type Real = Rat;
 
@@ -21,7 +21,11 @@ class CSingleTank(Real inVal){
         else           drain = -1/2;
         this!ctrl();
     }
-
+    
+    Unit setDrain(Real newDrain){
+    	if(newDrain < 0 && newDrain >= -1/2 && level >= 4) drain = newDrain; 
+    	if(newDrain > 0 && newDrain <= 1/2 && level <= 9)  drain = newDrain; 
+    }
 }
 
 {

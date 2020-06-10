@@ -52,19 +52,20 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
                 }
                 else -> throw Exception("option to use region $reg not supported yet")
             }
-            val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx")
-            println("Chisel  : Method proof obligation:\n$res\n")
+            val extraFields = mDecl.methodSig.paramList.map { it.name }
+            val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+            println("Chisel  : Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
 
         }
     }
-    private fun proofObligation(obl: String, path : String, file : String) : String{
+    private fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
         val proof =
         """
         Definitions
             HP skip ::= { ?true; };
         End.
         ProgramVariables
-            ${fields.joinToString(" ") { "Real $it;" }}
+            ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
         End.
         Problem
             $obl
@@ -115,9 +116,8 @@ fun extractImpl(mImpl : MethodImpl) : Triple<String, Boolean, Set<MethodSig>>{
     val init = if(extractInitial(mImpl) == null) 0 else 1
     val sofar = emptyList<String>().toMutableList()
     for(i in init .. mImpl.block.numStmt){
-        if(mImpl.block.getStmt(i) is AssignStmt)
         sofar += translateStmt(mImpl.block.getStmt(i))
     }
-    return Triple(sofar.joinToString(";"), isClean(mImpl.block), getCalled(mImpl.block))
+    return Triple(sofar.joinToString(" "), isClean(mImpl.block), getCalled(mImpl.block))
 }
 

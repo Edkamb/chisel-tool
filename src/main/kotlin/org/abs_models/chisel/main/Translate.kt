@@ -2,6 +2,7 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 
+const val SKIP = "skip;"
 
 fun isClean(stmt: Stmt?) : Boolean{
     if(stmt == null) return true
@@ -26,27 +27,27 @@ fun isClean(stmt: Stmt?) : Boolean{
 }
 
 fun translateStmt(stmt: Stmt?) : String{
-    if(stmt == null) return "skip"
+    if(stmt == null) return SKIP
     when(stmt){
         is AssignStmt -> {
             when(stmt.getChild(2)){
                 is PureExp ->
-                    return stmt.`var`.toString() + " := "+ translateExpr(stmt.getChild(2) as PureExp)
+                    return stmt.`var`.toString() + " := "+ translateExpr(stmt.getChild(2) as PureExp)+";"
                 else -> {throw Exception("Translation not supported yet : ${stmt.getChild(2)}")}
             }
         }
         is IfStmt -> {
-            return "if(${translateExpr(stmt.condition)}) ${translateStmt(stmt.then)} else  ${translateStmt(stmt.`else`)} "
+            return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
         }
         is ExpressionStmt -> {
             if(stmt is Call){
-                if(stmt.callee.toString() == "this") "skip"
+                if(stmt.callee.toString() == "this") SKIP
                 else throw Exception("Translation not supported yet: $stmt")
             }
-            return "skip"
+            return SKIP
         }
         is Block -> {
-            return stmt.stmts.joinToString(";") { translateStmt(it) }
+            return stmt.stmts.joinToString(" ") { translateStmt(it) }
         }
         else -> {throw Exception("Translation not supported yet: $stmt")}
     }
