@@ -95,24 +95,10 @@ class Main : CliktCommand() {
                     val cDecl = mDecl.declList.firstOrNull { it.name == tt.path.split(".")[1]}
                     if(cDecl != null && cDecl is ClassDecl) {
                         if(cDecl.hasPhysical()) {
-                            val pre = extractSpec(cDecl, "Requires")
-                            val inv =  extractSpec(cDecl.physical, "ObjInv")
-                            println("Chisel  : Extracted precondition $pre and invariant $inv for ${tt.path}")
-                            val trPh = extractPhysical(cDecl.physical)
-
-                            for(mDecl in cDecl.methods){
-                                val init = translateGuard(extractInitial(mDecl))
-                                val impl  = extractImpl(mDecl)
-                                println("Chisel  : Found method ${mDecl.methodSig.name}")
-                                println("Chisel  :        with initial $init")
-                                println("Chisel  :        with implementation $impl")
-                                println("Chisel  :        with behavior $trPh & true")
-                                println("Chisel  :        proof obligation:")
-                                println("Chisel  :        $inv -> [?$init;$impl]($inv && [$trPh & true]($inv))")
-
-                            }
+                            val clazzCont = ClassContainer(cDecl)
+                            clazzCont.fill()
                         }
-                        else throw Exception("non-physical classes not supported yet")
+                        else throw Exception("non-physical classes not supported, please use Crowbar instead")
                     }
                     else throw Exception("class not found")
                 }
@@ -125,101 +111,6 @@ class Main : CliktCommand() {
     }
 }
 
-fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : String, default:String = "True", multipleAllowed:Boolean = true) : String {
-    var ret : String = default
-        for (annotation in decl.nodeAnnotations) {
-            if(!annotation.type.toString().endsWith(".HybridSpec")) continue
-            if(annotation.getChild(0) !is DataConstructorExp) {
-                throw Exception("Could not extract any specification $expectedSpec from $decl because of the expected value")
-            }
-            val annotated = annotation.getChild(0) as DataConstructorExp
-            if(annotated.constructor != expectedSpec) continue
-            val next = (annotated.getParam(0) as StringLiteral).content
-            if (!multipleAllowed) break
-            ret = "($ret) && ($next)"
-        }
-    return ret
-}
-
-fun extractPhysical(physicalImpl: PhysicalImpl) : String{
-    return physicalImpl.fields.joinToString(", ") { translateExpr(it.initExp) }
-}
-
-fun extractInitial(mImpl : MethodImpl) : Guard?{
-    val lead = mImpl.block.getStmt(0)
-    return if(lead is AwaitStmt){
-        lead.guard
-    }else null
-}
 
 
-fun extractImpl(mImpl : MethodImpl) : String{
-    val init = if(extractInitial(mImpl) == null) 0 else 1
-    val sofar = emptyList<String>().toMutableList()
-    for(i in init .. mImpl.block.numStmt){
-        sofar += translateStmt(mImpl.block.getStmt(i))
-    }
-    return sofar.joinToString(";")
-}
-
-fun translateStmt(stmt: Stmt?) : String{
-    if(stmt == null) return "skip"
-    when(stmt){
-        is AssignStmt -> {
-            when(stmt.getChild(2)){
-                is PureExp ->
-                    return stmt.`var`.toString() + " := "+ translateExpr(stmt.getChild(2) as PureExp)
-                else -> {throw Exception("Translation not supported yet : ${stmt.getChild(2)}")}
-            }
-        }
-        is IfStmt -> {
-            return "if(${translateExpr(stmt.condition)}) ${translateStmt(stmt.then)} else  ${translateStmt(stmt.`else`)} "
-        }
-        is ExpressionStmt -> {
-            return "skip"
-        }
-        is Block -> {
-            return stmt.stmts.joinToString(";") { translateStmt(it) }
-        }
-        else -> {throw Exception("Translation not supported yet: $stmt")}
-    }
-}
-
-fun translateExpr(exp: Exp) : String{
-    when(exp) {
-        is DivMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
-        is MultMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
-        is ModMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
-        is SubAddExp -> return "(${translateExpr(exp.left)}-${translateExpr(exp.right)})"
-        is AddAddExp -> return "(${translateExpr(exp.left)}+${translateExpr(exp.right)})"
-        is LTEQExp -> return "(${translateExpr(exp.left)}<=${translateExpr(exp.right)})"
-        is LTExp -> return "(${translateExpr(exp.left)}<${translateExpr(exp.right)})"
-        is GTExp -> return "(${translateExpr(exp.left)}>${translateExpr(exp.right)})"
-        is GTEQExp -> return "(${translateExpr(exp.left)}>=${translateExpr(exp.right)})"
-        is EqExp -> return "(${translateExpr(exp.left)}==${translateExpr(exp.right)})"
-        is NotEqExp -> return "(${translateExpr(exp.left)}!=${translateExpr(exp.right)})"
-        is OrBoolExp -> return "(${translateExpr(exp.left)}||${translateExpr(exp.right)})"
-        is AndBoolExp -> return "(${translateExpr(exp.left)}&&${translateExpr(exp.right)})"
-        is IntLiteral -> return "(${exp.content})"
-        is FieldUse -> return "$exp"
-        is VarUse -> return "$exp"
-        is DiffOpExp -> return "(${translateExpr(exp.getChild(0) as Exp)}')"
-        is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
-        else -> {throw Exception("Translation not supported yet: $exp")}
-    }
-}
-
-
-fun translateGuard(exp: Guard?) : String{
-    if(exp == null) return "true"
-    return when(exp){
-        is DifferentialGuard -> translateGuard(exp.condition)
-        is ExpGuard -> translateExpr(exp.pureExp)
-        is AndGuard -> "(${translateGuard(exp.left)}) && (${translateGuard(exp.right)})"
-        is OrGuard -> "(${translateGuard(exp.left)}) || (${translateGuard(exp.right)})"
-        is DurationGuard -> "t >= ${translateExpr(exp.min)}"
-        is ClaimGuard -> "true"
-        else -> {throw Exception("Translation not supported yet: $exp")}
-    }
-}
 fun main(args:Array<String>) = Main().main(args)
