@@ -6,6 +6,7 @@ import abs.frontend.ast.*
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.multiple
+import com.github.ajalt.clikt.parameters.groups.default
 import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
 import com.github.ajalt.clikt.parameters.groups.required
 import com.github.ajalt.clikt.parameters.groups.single
@@ -51,7 +52,7 @@ class Main : CliktCommand() {
         option(help="Does not compute any regions").switch("--basic" to RegionOption.BasicRegion),
         option(help="Computes regions using the called methods").switch("--uniform" to RegionOption.UniformRegion),
         option(help="Computes regions using the called methods and controllers").switch("--split" to RegionOption.SplitRegion)
-    ).single().required()
+    ).single().default(RegionOption.BasicRegion)
 
 
     private val target : ChiselOption by mutuallyExclusiveOptions<ChiselOption>(
@@ -69,7 +70,7 @@ class Main : CliktCommand() {
                 lazyMessage = {"invalid fully qualified class name $it"}) },
         option("--directclass","-d",help="encodes <module>.<class> directly into a double loop structure (LITES approach)")
             .convert {  ChiselOption.DirectClassOption(it) as ChiselOption }
-            .validate { require((it as ChiselOption.AllClassOption).path.split(".").size == 2,
+            .validate { require((it as ChiselOption.DirectClassOption).path.split(".").size == 2,
                 lazyMessage = {"invalid fully qualified class name $it"}) },
         option(help="Verifies the main block of the model").switch("--main" to ChiselOption.MainBlockOption),
         option(help="Verifies the full model (not using -d)").switch("--full" to ChiselOption.FullOption)
@@ -116,6 +117,18 @@ class Main : CliktCommand() {
                     else throw Exception("class not found")
                 }
                 else throw Exception("module not found")
+            }
+            is ChiselOption.MainBlockOption -> {
+                val block = model.moduleDecls.firstOrNull { it.hasBlock() }?.block
+                if(block == null) {
+                    System.err.println("Model contains no main block")
+                    exitProcess(-1)
+                }
+                val prog = translateStmt(block)
+                val cc = CodeContainer()
+                val vars = collect(VarUse::class.java,block).map { it.name }
+                val res  = cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
+                output("Proof obligation for main block:\n$res\n")
             }
             else -> throw Exception("option $target not supported yet")
         }

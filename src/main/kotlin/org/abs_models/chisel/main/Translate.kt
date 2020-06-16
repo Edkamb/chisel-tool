@@ -40,11 +40,18 @@ fun translateStmt(stmt: Stmt?) : String{
             return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
         }
         is ExpressionStmt -> {
-            if(stmt is Call){
-                if(stmt.callee.toString() == "this") SKIP
+            if(stmt.exp is Call){
+                if((stmt.exp as Call).callee.toString() == "this") SKIP //TODO: unsound, but needed for now for the recursive call of run
                 else throw Exception("Translation not supported yet: $stmt")
             }
-            return SKIP
+            if(stmt.exp is NewExp){
+                val cDecl = findClass(stmt.model, (stmt.exp as NewExp).className)
+                var spec = extractSpec(cDecl,"Requires")
+                for(i in 0 until cDecl.numParam)
+                    spec = spec.replace(cDecl.getParam(i).name, translateExpr((stmt.exp as NewExp).getParam(i)))
+                return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
+            }
+            return throw Exception("Translation not supported yet: $stmt")
         }
         is Block -> {
             return stmt.stmts.joinToString(" ") { translateStmt(it) }

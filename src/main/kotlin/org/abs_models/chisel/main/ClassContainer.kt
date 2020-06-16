@@ -2,14 +2,35 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 import java.io.File
+const val CONTRACTVARIABLE = "contract"
+open class CodeContainer{
+    protected var fields : List<String> = listOf(CONTRACTVARIABLE)
+    fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
+        val proof =
+            """
+        Definitions
+            HP skip ::= { ?true; };
+        End.
+        ProgramVariables
+            ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
+        End.
+        Problem
+            $obl
+        End.
+        """.trimIndent()
+        val f = File(path)
+        f.mkdirs()
+        File("$path/$file").writeText(proof)
+        return proof
+    }
+}
 
-class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOption) {
+class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
     private val name : String = cDecl.name
-    private val pre = extractSpec(cDecl, "Requires")
+    private val pre = extractSpec(cDecl, "Requires")+" & contract = 1"
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
     private val trPh = extractPhysical(cDecl.physical)
 
-    private var fields : List<String> = emptyList()
 
     init {
         if(reg == RegionOption.SplitRegion)
@@ -28,7 +49,7 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
             initialProg += ";${fDecl.name} := ${translateExpr(diffInit.initVal)}"
         }
         initialProg += ";"
-        val res = proofObligation("$pre -> [$initialProg]$inv", "/tmp/chisel/$name", "init.kyx")
+        val res = proofObligation("$pre -> [$initialProg]$inv & contract = 1", "/tmp/chisel/$name", "init.kyx")
         output("First proof obligation:\n$res\n")
     }
 
@@ -45,7 +66,7 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
             val post = when(reg){
                 RegionOption.BasicRegion -> {
                     if(impl.second) inv                          //if no field is accessed, the method needs only to check method calls
-                    else            "($inv & [{$trPh & true}]$inv)"
+                    else            "($inv & contract = 1 & [{$trPh & true}]$inv)"
                 }
                 RegionOption.UniformRegion -> {
                     if(impl.second) inv
@@ -53,7 +74,7 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
                         val guards = impl.third.map { extractInitial(find(it, cDecl) )}
                         val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                         val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                        "($inv & [{$trPh & $region}]$inv)"
+                        "($inv & contract = 1 & [{$trPh & $region}]$inv)"
                     }
                 }
                 else -> throw Exception("option to use region $reg not supported yet")
@@ -64,24 +85,7 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
 
         }
     }
-    private fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
-        val proof =
-        """
-        Definitions
-            HP skip ::= { ?true; };
-        End.
-        ProgramVariables
-            ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
-        End.
-        Problem
-            $obl
-        End.
-        """.trimIndent()
-        val f = File(path)
-        f.mkdirs()
-        File("$path/$file").writeText(proof)
-        return proof
-    }
+
 }
 
 
