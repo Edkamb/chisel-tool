@@ -102,39 +102,81 @@ class Main : CliktCommand() {
             throw Exception("Compilation failed with type errors")
 
         when(target) {
+            is ChiselOption.MethodOption -> {
+                val tt = target as ChiselOption.MethodOption
+                proofObligationMethod(model, tt.path, regionOpt)
+            }
             is ChiselOption.AllClassOption -> {
                 val tt = target as ChiselOption.AllClassOption
-                val mDecl = model.moduleDecls.firstOrNull { it.name == tt.path.split(".")[0]}
-                if(mDecl != null) {
-                    val cDecl = mDecl.declList.firstOrNull { it.name == tt.path.split(".")[1]}
-                    if(cDecl != null && cDecl is ClassDecl) {
-                        if(cDecl.hasPhysical()) {
-                            val clazzCont = ClassContainer(cDecl, regionOpt)
-                            clazzCont.fill()
-                        }
-                        else throw Exception("non-physical classes not supported, please use Crowbar instead")
+                proofObligationsClass(model, tt.path, regionOpt)
+            }
+            is ChiselOption.InitOption -> {
+                val tt = target as ChiselOption.InitOption
+                proofObligationInit(model, tt.path, regionOpt)
+            }
+            is ChiselOption.FullOption -> {
+                for(mDecl in model.moduleDecls.filter { !it.name.startsWith("ABS.") }){
+                    for(cDecl in mDecl.decls.filterIsInstance<ClassDecl>()){
+                        proofObligationsClass(model, mDecl.name+"."+cDecl.name,regionOpt)
                     }
-                    else throw Exception("class not found")
                 }
-                else throw Exception("module not found")
+                proofObligationMainBlock(model)
             }
             is ChiselOption.MainBlockOption -> {
-                val block = model.moduleDecls.firstOrNull { it.hasBlock() }?.block
-                if(block == null) {
-                    System.err.println("Model contains no main block")
-                    exitProcess(-1)
-                }
-                val prog = translateStmt(block)
-                val cc = CodeContainer()
-                val vars = collect(VarUse::class.java,block).map { it.name }
-                val res  = cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
-                output("Proof obligation for main block:\n$res\n")
+                proofObligationMainBlock(model)
             }
             else -> throw Exception("option $target not supported yet")
         }
 
         output("done")
     }
+}
+
+
+fun proofObligationMethod(model: Model, path : String, regionOpt : RegionOption) {
+    val clazzCont = getContainer(model, path, regionOpt)
+    val metDecl = clazzCont.cDecl.methods.firstOrNull { it.methodSig.name == path.split(".")[2] }
+    if(metDecl == null) throw Exception("method not found")
+    else                clazzCont.proofObligationMethod(metDecl)
+}
+
+
+fun proofObligationInit(model: Model, path : String, regionOpt : RegionOption) {
+    val clazzCont = getContainer(model, path, regionOpt)
+    clazzCont.proofObligationInitial()
+}
+
+fun proofObligationsClass(model: Model, path : String, regionOpt : RegionOption) {
+    val clazzCont = getContainer(model, path, regionOpt)
+    clazzCont.proofObligationsAll()
+}
+
+fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassContainer{
+    val mDecl = model.moduleDecls.firstOrNull { it.name == path.split(".")[0]}
+    if(mDecl != null) {
+        val cDecl = mDecl.declList.firstOrNull { it.name == path.split(".")[1]}
+        if(cDecl != null && cDecl is ClassDecl) {
+            if(cDecl.hasPhysical()) {
+                return ClassContainer(cDecl, regionOpt)
+            }
+            else throw Exception("non-physical classes not supported, please use Crowbar instead")
+        }
+        else throw Exception("class not found")
+    }
+    else throw Exception("module not found")
+}
+
+fun proofObligationMainBlock(model: Model){
+    val block = model.moduleDecls.firstOrNull { it.hasBlock() }?.block
+    if(block == null) {
+        System.err.println("Model contains no main block")
+        exitProcess(-1)
+    }
+    val prog = translateStmt(block)
+    val cc = CodeContainer()
+    val vars = collect(VarUse::class.java,block).map { it.name }
+    val res = cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
+    output("Proof obligation for main block:\n$res\n")
 }
 
 

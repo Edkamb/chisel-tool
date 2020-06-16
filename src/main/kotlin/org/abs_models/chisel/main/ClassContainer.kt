@@ -3,6 +3,7 @@ package org.abs_models.chisel.main
 import abs.frontend.ast.*
 import java.io.File
 const val CONTRACTVARIABLE = "contract"
+
 open class CodeContainer{
     protected var fields : List<String> = listOf(CONTRACTVARIABLE)
     fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
@@ -25,7 +26,7 @@ open class CodeContainer{
     }
 }
 
-class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
+class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
     private val name : String = cDecl.name
     private val pre = extractSpec(cDecl, "Requires")+" & contract = 1"
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
@@ -35,6 +36,9 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
     init {
         if(reg == RegionOption.SplitRegion)
             throw Exception("option to use region $reg not supported yet")
+    }
+
+    fun proofObligationInitial(){
         var initialProg = "?true"
         for(fDecl in cDecl.paramList ){
             fields = fields + fDecl.name
@@ -50,39 +54,45 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
         }
         initialProg += ";"
         val res = proofObligation("$pre -> [$initialProg]$inv & contract = 1", "/tmp/chisel/$name", "init.kyx")
-        output("First proof obligation:\n$res\n")
+        output("Inital proof obligation:\n$res\n")
     }
 
-    fun fill() {
+    fun proofObligationMethod(mDecl : MethodImpl){
+        val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
+        if(read.isEmpty()){
+            output("Skipping ${mDecl.methodSig.name} because it does not write into the heap")
+            return
+        }
+
+        val init = translateGuard(extractInitial(mDecl))
+        val impl  = extractImpl(mDecl)
+        val post = when(reg){
+            RegionOption.BasicRegion -> {
+                if(impl.second) inv                          //if no field is accessed, the method needs only to check method calls
+                else            "($inv & contract = 1 & [{$trPh & true}]$inv)"
+            }
+            RegionOption.UniformRegion -> {
+                if(impl.second) inv
+                else{
+                    val guards = impl.third.map { extractInitial(find(it, cDecl) )}
+                    val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
+                    val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                    "($inv & contract = 1 & [{$trPh & $region}]$inv)"
+                }
+            }
+            else -> throw Exception("option to use region $reg not supported yet")
+        }
+        val extraFields = mDecl.methodSig.paramList.map { it.name }
+        val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+        output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
+
+
+    }
+
+    fun proofObligationsAll() {
+        proofObligationInitial()
         for(mDecl in cDecl.methods){
-            val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
-            if(read.isEmpty()){
-                output("Skipping ${mDecl.methodSig.name} because it does not write into the heap")
-                continue
-            }
-
-            val init = translateGuard(extractInitial(mDecl))
-            val impl  = extractImpl(mDecl)
-            val post = when(reg){
-                RegionOption.BasicRegion -> {
-                    if(impl.second) inv                          //if no field is accessed, the method needs only to check method calls
-                    else            "($inv & contract = 1 & [{$trPh & true}]$inv)"
-                }
-                RegionOption.UniformRegion -> {
-                    if(impl.second) inv
-                    else{
-                        val guards = impl.third.map { extractInitial(find(it, cDecl) )}
-                        val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
-                        val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                        "($inv & contract = 1 & [{$trPh & $region}]$inv)"
-                    }
-                }
-                else -> throw Exception("option to use region $reg not supported yet")
-            }
-            val extraFields = mDecl.methodSig.paramList.map { it.name }
-            val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
-            output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
-
+            proofObligationMethod(mDecl)
         }
     }
 
