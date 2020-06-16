@@ -59,20 +59,22 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
 
     fun proofObligationMethod(mDecl : MethodImpl){
         val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
-        if(read.isEmpty()){
-            output("Skipping ${mDecl.methodSig.name} because it does not write into the heap")
+        val call  = collect(Call::class.java, mDecl)
+        val create  = collect(NewExp::class.java, mDecl)
+        if(read.isEmpty() && call.isEmpty() && create.isEmpty() ){
+            output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls and creates no objects")
             return
         }
 
         val init = translateGuard(extractInitial(mDecl))
-        val impl  = extractImpl(mDecl)
+        val impl  = extractImpl(mDecl) //todo: .second is no checked with read above
         val post = when(reg){
             RegionOption.BasicRegion -> {
-                if(impl.second) inv                          //if no field is accessed, the method needs only to check method calls
+                if(impl.second) "$inv & contract = 1"                          //if no field is accessed, the method needs only to check method calls
                 else            "($inv & contract = 1 & [{$trPh & true}]$inv)"
             }
             RegionOption.UniformRegion -> {
-                if(impl.second) inv
+                if(impl.second) "$inv & contract = 1"
                 else{
                     val guards = impl.third.map { extractInitial(find(it, cDecl) )}
                     val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
@@ -82,8 +84,8 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
             }
             else -> throw Exception("option to use region $reg not supported yet")
         }
-        val extraFields = mDecl.methodSig.paramList.map { it.name }
-        val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+        val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
+        val res = proofObligation("$inv & contract = 1 -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
 
 
@@ -135,7 +137,7 @@ fun extractInitial(mImpl : MethodImpl) : Guard?{
 fun extractImpl(mImpl : MethodImpl) : Triple<String, Boolean, Set<MethodSig>>{
     val init = if(extractInitial(mImpl) == null) 0 else 1
     val sofar = emptyList<String>().toMutableList()
-    for(i in init .. mImpl.block.numStmt){
+    for(i in init until mImpl.block.numStmt){
         sofar += translateStmt(mImpl.block.getStmt(i))
     }
     return Triple(sofar.joinToString(" "), isClean(mImpl.block), getCalled(mImpl.block))

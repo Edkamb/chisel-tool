@@ -8,11 +8,11 @@ interface ITank {
 	[HybridSpec: Requires("-1/2 < newDrain & newDrain < 1/2")]
     Unit setDrain(Real newDrain);
 
-    Bool getValveStatus();
+    Real getValveStatus();
 }
 
 [HybridSpec: Requires("3 < inVal & inVal < 10")]
-class CSingleTank(Real inVal){
+class CSingleTank(Real inVal) implements ITank{
 
 [HybridSpec: ObjInv("3 < level & level < 10")]
     physical{
@@ -24,7 +24,7 @@ class CSingleTank(Real inVal){
 
     Unit ctrl(){
         await diff level <= 3 & drain <= 0 | level >= 10 & drain >= 0;
-        if(level <= 3) drain =  1/2;
+        if(level <= 3)     drain =  1/2;
         else               drain = -1/2;
         this!ctrl();
     }
@@ -40,6 +40,13 @@ class CSingleTank(Real inVal){
     	if(drain >= 0)  ret = 1;
     	else            ret = -1;
     	return ret;
+    }
+
+    Unit dummy(){
+        Real r = 0;
+        r = r/2;
+        this!getValveStatus();
+        this!setDrain(r);
     }
 }
 

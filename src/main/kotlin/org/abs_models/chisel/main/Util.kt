@@ -1,8 +1,6 @@
 package org.abs_models.chisel.main
 
-import abs.frontend.ast.ASTNode
-import abs.frontend.ast.ClassDecl
-import abs.frontend.ast.Model
+import abs.frontend.ast.*
 
 fun collect(
     node: ASTNode<out ASTNode<*>>,
@@ -23,4 +21,17 @@ fun findClass(model: Model, inName : String) : ClassDecl {
         for( cDecl in mDecl.decls)
             if(cDecl is ClassDecl && cDecl.name == inName) return cDecl
     throw Exception("cannot find class $inName to extract its creation condition")
+}
+
+fun findInterfaceDecl(model: Model, methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig? {
+    //for (mDecl in model.moduleDecls.filter { !it.name.startsWith("ABS.") }){
+      //  for( iDecl in mDecl.decls.filterIsInstance<InterfaceDecl>()){
+       for( iDecl in classDecl.implementedInterfaceUseList.map { it.decl as InterfaceDecl }){
+            for( mDecl in iDecl.allMethodSigs){
+                if(mDecl.matches(methodImpl.methodSig)) return mDecl
+            }
+        }
+    //}
+    return null
+
 }

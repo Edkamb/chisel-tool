@@ -40,18 +40,16 @@ fun translateStmt(stmt: Stmt?) : String{
             return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
         }
         is ExpressionStmt -> {
-            if(stmt.exp is Call){
-                if((stmt.exp as Call).callee.toString() == "this") SKIP //TODO: unsound, but needed for now for the recursive call of run
-                else throw Exception("Translation not supported yet: $stmt")
-            }
-            if(stmt.exp is NewExp){
-                val cDecl = findClass(stmt.model, (stmt.exp as NewExp).className)
-                var spec = extractSpec(cDecl,"Requires")
-                for(i in 0 until cDecl.numParam)
-                    spec = spec.replace(cDecl.getParam(i).name, translateExpr((stmt.exp as NewExp).getParam(i)))
-                return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
-            }
-            return throw Exception("Translation not supported yet: $stmt")
+            return if(stmt.exp is PureExp) SKIP
+            else translateExpr(stmt.exp)
+        }
+        is AssignStmt -> {
+            return if(stmt.value is PureExp) stmt.`var`.name+" := "+translateExpr(stmt.value as Exp)+";"
+            else "{"+translateExpr(stmt.value as Exp) + "; "+stmt.`var`.name+" := *;}"
+        }
+        is VarDeclStmt -> {
+            return if(stmt.varDecl.initExp is PureExp) stmt.varDecl.name+" := "+translateExpr(stmt.varDecl.initExp as Exp)+";"
+            else "{"+translateExpr(stmt.varDecl.initExp as Exp) + "; "+stmt.varDecl.name+" := *;}"
         }
         is Block -> {
             return stmt.stmts.joinToString(" ") { translateStmt(it) }
@@ -80,6 +78,24 @@ fun translateExpr(exp: Exp) : String{
         is VarUse -> return "$exp"
         is DiffOpExp -> return "${translateExpr(exp.getChild(0) as Exp)}'"
         is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
+        is AsyncCall -> {
+            val mSig = exp.methodSig
+            val mSsig = findInterfaceDecl(exp.model, mSig.contextMethod, mSig.contextDecl as ClassDecl) ?: return SKIP
+            var spec = extractSpec(mSsig,"Requires")
+
+            for(i in 0 until exp.numParam)
+                spec = spec.replace(mSsig.getParam(i).name, translateExpr(exp.getParam(i)))
+            return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
+        }
+        is NewExp -> {
+            val cDecl = findClass(exp.model, exp.className)
+            var spec = extractSpec(cDecl,"Requires")
+            for(i in 0 until cDecl.numParam)
+                spec = spec.replace(cDecl.getParam(i).name, translateExpr(exp.getParam(i)))
+            return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
+        }
+        is GetExp -> return SKIP
+        is PureExp -> return SKIP
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
 }
