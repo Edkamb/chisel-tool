@@ -3,9 +3,10 @@ package org.abs_models.chisel.main
 import abs.frontend.ast.*
 import java.io.File
 const val CONTRACTVARIABLE = "contract"
+const val RESULTVARIABLE = "result"
 
 open class CodeContainer{
-    protected var fields : List<String> = listOf(CONTRACTVARIABLE)
+    protected var fields : Set<String> = setOf(CONTRACTVARIABLE,RESULTVARIABLE)
     fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
         val proof =
             """
@@ -66,26 +67,34 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
             return
         }
 
+
+        val mSig = findInterfaceDecl(mDecl.model, mDecl, mDecl.contextDecl as ClassDecl)
+        val pre = "$inv & $CONTRACTVARIABLE = 1 & "+if(mSig != null){
+            extractSpec(mSig,"Requires")
+        } else "true"
+
+
         val init = translateGuard(extractInitial(mDecl))
         val impl  = extractImpl(mDecl) //todo: .second is no checked with read above
-        val post = when(reg){
+        var post = "(${CONTRACTVARIABLE} = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
+        post += when(reg){
             RegionOption.BasicRegion -> {
-                if(impl.second) "$inv & contract = 1"                          //if no field is accessed, the method needs only to check method calls
-                else            "($inv & contract = 1 & [{$trPh & true}]$inv)"
+                if(read.isEmpty()) ")"                          //if no field is accessed, the method needs only to check method calls
+                else            " & [{$trPh & true}]$inv)"
             }
             RegionOption.UniformRegion -> {
-                if(impl.second) "$inv & contract = 1"
+                if(read.isEmpty()) ")"
                 else{
-                    val guards = impl.third.map { extractInitial(find(it, cDecl) )}
+                    val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                     val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                     val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                    "($inv & contract = 1 & [{$trPh & $region}]$inv)"
+                    " & [{$trPh & $region}]$inv)"
                 }
             }
             else -> throw Exception("option to use region $reg not supported yet")
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
-        val res = proofObligation("$inv & contract = 1 -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+        val res = proofObligation("$pre -> [?$init;{$impl]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
 
 
@@ -134,12 +143,12 @@ fun extractInitial(mImpl : MethodImpl) : Guard?{
 }
 
 
-fun extractImpl(mImpl : MethodImpl) : Triple<String, Boolean, Set<MethodSig>>{
+fun extractImpl(mImpl : MethodImpl) : String{
     val init = if(extractInitial(mImpl) == null) 0 else 1
     val sofar = emptyList<String>().toMutableList()
     for(i in init until mImpl.block.numStmt){
         sofar += translateStmt(mImpl.block.getStmt(i))
     }
-    return Triple(sofar.joinToString(" "), isClean(mImpl.block), getCalled(mImpl.block))
+    return sofar.joinToString(" ")
 }
 

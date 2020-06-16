@@ -4,28 +4,6 @@ import abs.frontend.ast.*
 
 const val SKIP = "skip;"
 
-fun isClean(stmt: Stmt?) : Boolean{
-    if(stmt == null) return true
-    when(stmt) {
-        is AssignStmt -> {
-            return false
-        }
-        is IfStmt -> {
-            return isClean(stmt.then) && isClean(stmt.`else`)
-        }
-        is WhileStmt -> {
-            return isClean(stmt.body)
-        }
-        is Block -> {
-            return stmt.stmts.all { isClean(it) }
-        }
-        is CaseStmt -> {
-            return stmt.branchs.map { it.right }.all { isClean(it) }
-        }
-        else -> return true
-    }
-}
-
 fun translateStmt(stmt: Stmt?) : String{
     if(stmt == null) return SKIP
     when(stmt){
@@ -35,6 +13,9 @@ fun translateStmt(stmt: Stmt?) : String{
                     return stmt.`var`.toString() + " := "+ translateExpr(stmt.getChild(2) as PureExp)+";"
                 else -> {throw Exception("Translation not supported yet : ${stmt.getChild(2)}")}
             }
+        }
+        is ReturnStmt -> {
+            return "$RESULTVARIABLE := ${translateExpr(stmt.retExp)}"
         }
         is IfStmt -> {
             return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
@@ -111,34 +92,6 @@ fun translateGuard(exp: Guard?) : String{
         is DurationGuard -> "t >= ${translateExpr(exp.min)}"
         is ClaimGuard -> "true"
         else -> {throw Exception("Translation not supported yet: $exp")}
-    }
-}
-
-
-fun getCalled(stmt: Stmt?): Set<MethodSig> {
-    if(stmt == null) return emptySet()
-    when(stmt) {
-        is AssignStmt -> {
-            return if(stmt.callExpression is Call) setOf(stmt.callExpression.methodSig)
-            else emptySet()
-        }
-        is ExpressionStmt -> {
-            return if(stmt.exp is Call) setOf(stmt.callExpression.methodSig)
-            else emptySet()
-        }
-        is IfStmt -> {
-            return getCalled(stmt.then) + getCalled(stmt.`else`)
-        }
-        is WhileStmt -> {
-            return getCalled(stmt.body)
-        }
-        is Block -> {
-            return stmt.stmts.fold(emptySet(), { acc, nx -> acc + getCalled(nx) })
-        }
-        is CaseStmt -> {
-            return stmt.branchs.fold(emptySet(), { acc, nx -> acc + getCalled(nx.right) })
-        }
-        else -> return emptySet()
     }
 }
 
