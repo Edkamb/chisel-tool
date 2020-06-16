@@ -94,7 +94,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
             else -> throw Exception("option to use region $reg not supported yet")
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
-        val res = proofObligation("$pre -> [?$init;{$impl]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+        val res = proofObligation("$pre -> [?$init;{$impl}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
 
 
