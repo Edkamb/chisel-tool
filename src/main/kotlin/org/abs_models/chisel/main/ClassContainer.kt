@@ -29,11 +29,17 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
         }
         initialProg += ";"
         val res = proofObligation("$pre -> [$initialProg]$inv", "/tmp/chisel/$name", "init.kyx")
-        println("Chisel  : First proof obligation:\n$res\n")
+        output("First proof obligation:\n$res\n")
     }
 
     fun fill() {
         for(mDecl in cDecl.methods){
+            val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
+            if(read.isEmpty()){
+                output("Skipping ${mDecl.methodSig.name} because it does not write into the heap")
+                continue
+            }
+
             val init = translateGuard(extractInitial(mDecl))
             val impl  = extractImpl(mDecl)
             val post = when(reg){
@@ -54,7 +60,7 @@ class ClassContainer(private val cDecl : ClassDecl, private val reg : RegionOpti
             }
             val extraFields = mDecl.methodSig.paramList.map { it.name }
             val res = proofObligation("$inv -> [?$init;${impl.first}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
-            println("Chisel  : Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
+            output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
 
         }
     }
@@ -100,7 +106,7 @@ fun extractPhysical(physicalImpl: PhysicalImpl) : String{
         val exp = it.initExp as DifferentialExp
         if(exp.left is DiffOpExp){
             translateExpr(exp.left) + " =" + translateExpr(exp.right)
-        } else throw java.lang.Exception("Only ODEs are supported for translation to KeYmaera X, LHS found: ${exp.left}")
+        } else throw Exception("Only ODEs are supported for translation to KeYmaera X, LHS found: ${exp.left}")
     }
 }
 

@@ -23,7 +23,7 @@ enum class Verbosity { SILENT, NORMAL, V, VV, VVV }
 
 fun output(text : String, level : Verbosity = Verbosity.NORMAL){
     if(verbosity >= level)
-        println(text)
+        println("Chisel  : $text")
 }
 
 var verbosity = Verbosity.NORMAL
@@ -82,14 +82,14 @@ class Main : CliktCommand() {
         verbosity = Verbosity.values()[verbose]
         outPath = "$out"
 
-        output("Chisel  : loading files....")
+        output("Loading files....")
         val input = filePath.map{ File(it.toString()) }
         if(input.any { !it.exists() }) {
             System.err.println("file not found: $filePath")
             exitProcess(-1)
         }
 
-        output("Chisel  : loading ABS model....")
+        output("Loading ABS model....")
         val model = try {
             abs.frontend.parser.Main().parse(input.map { it.toString() }.toTypedArray())
         } catch (e : Exception) {
@@ -120,7 +120,7 @@ class Main : CliktCommand() {
             else -> throw Exception("option $target not supported yet")
         }
 
-        println("done")
+        output("done")
     }
 }
 
