@@ -7,6 +7,9 @@ import java.util.concurrent.TimeUnit
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
 
+/**
+ * Manages some piece of code that generates proof obligations, i.e., a class or the main block
+ */
 open class CodeContainer{
     protected var fields : Set<String> = setOf(CONTRACTVARIABLE,RESULTVARIABLE)
     fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : Boolean{
@@ -60,18 +63,102 @@ open class CodeContainer{
     }
 }
 
-class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
+/**
+ * reg is variable because we may fall back to uniform regions if the class is not controllable
+ */
+class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : CodeContainer(){
     private val name : String = cDecl.name
+
+    //these are unprocessed user inputs
     private val pre = extractSpec(cDecl, "Requires")+" & contract = 1"
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
     private val trPh = extractPhysical(cDecl.physical)
-
+    private val controllable = isControllable()
+    private var ctrlRegions = mutableListOf<String>()
 
     init {
-        if(reg == RegionOption.SplitRegion)
-            throw Exception("option to use region $reg not supported yet")
+        //for the controlled Region we ensure that the class is controllable and fall back to uniform regions if it is not
+        if(reg == RegionOption.CtrlRegion) {
+            output("Class ${cDecl.name} is controllable: $controllable", Verbosity.VVV)
+            if (controllable) {
+                for (mImpl in cDecl.methods) {
+                    if (isController(mImpl)) {
+                        ctrlRegions.add(getCtrlRegion(mImpl))
+                    }
+                }
+                output("controlled region: ${ctrlRegions.joinToString(" & ")}", Verbosity.VVV)
+            }else {
+                output("Class ${cDecl.name} is not controllable, falling back to uniform regions", Verbosity.NORMAL)
+            }
+        }
     }
 
+    //xxx: we do not check that run is not exposed
+    /**
+     * This checks that the class is controllable:
+     *  - no gets
+     *  - no durations
+     *  - no synchronous calls (for simplicity)
+     *  - no calls to run
+     *  - run is a sequence of asynchronous calls
+     */
+    private fun isControllable() : Boolean{
+        val runSig = cDecl.methods.map { it.methodSig }.firstOrNull { it.name == "run" } ?: return false
+        for(mImpl in cDecl.methods){
+            if(mImpl.methodSig.matches(runSig)) {
+                for (i in 0 until mImpl.block.numStmt) {
+                    if(mImpl.block.getStmt(i) !is ExpressionStmt || (mImpl.block.getStmt(i) as ExpressionStmt).exp !is AsyncCall) return false
+                }
+            } else {
+                val init = if (extractInitial(mImpl) == null) 0 else 1
+                for (i in init until mImpl.block.numStmt) {
+                    if (collect(GetExp::class.java, mImpl.block.getStmt(i)).isNotEmpty())
+                        return false
+                    if (collect(DurationStmt::class.java, mImpl.block.getStmt(i)).isNotEmpty())
+                        return false
+                    if (collect(SyncCall::class.java, mImpl.block.getStmt(i)).isNotEmpty())
+                        return false
+                    if (collect(Call::class.java, mImpl.block.getStmt(i)).any { it.methodSig.matches(runSig) })
+                        return false
+                }
+            }
+        }
+        return true
+    }
+
+    private fun getCtrlRegion(mImpl: MethodImpl) : String{
+        val init =  extractInitial(mImpl) as DifferentialGuard
+        return translateGuard(init)
+    }
+
+    /**
+     *  This methods assumes isControllable()
+     *
+     *  Checks whether the method is a controller method:
+     *   - is called from run
+     *   - starts with an await
+     *   - no awaits otherwise
+     *   - last statement is an asynchronous recursive call
+     */
+    private fun isController(mImpl: MethodImpl): Boolean {
+        if(extractInitial(mImpl) == null) return false
+        val finalCall =  mImpl.block.getStmt(mImpl.block.numStmt-1)
+        if(finalCall is ExpressionStmt && finalCall.exp is AsyncCall) {
+            val vv = finalCall.exp as AsyncCall
+            if (vv.callee is ThisExp && vv.methodSig.matches(mImpl.methodSig)) {
+                for (i in 1 until mImpl.block.numStmt - 1) {
+                    if (collect(AwaitStmt::class.java, mImpl.block.getStmt(i)).isNotEmpty())
+                        return false
+                }
+
+                val runImpl = cDecl.methods.first { it.methodSig.name == "run" }
+                return collect(Call::class.java, runImpl).any { it.methodSig.matches(mImpl.methodSig) }
+            }
+        }
+        return false
+    }
+
+    //TODO: this does not handle run correctly
     fun proofObligationInitial() : Boolean{
         var initialProg = "?true"
         for(fDecl in cDecl.paramList ){
@@ -125,7 +212,16 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
                     " & [{$trPh & $region}]$inv)"
                 }
             }
-            else -> throw Exception("option to use region $reg not supported yet")
+            RegionOption.CtrlRegion -> {
+                if(read.isEmpty()) ")"
+                else{
+                    val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
+                    val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
+                    var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                    region = "$region & !(${ctrlRegions.joinToString(" & ")})"
+                    " & [{$trPh & $region}]$inv)"
+                }
+            }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
         val res = proofObligation("$pre -> [?$init;{$impl}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)

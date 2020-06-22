@@ -22,6 +22,11 @@ class CSingleTank(Real inVal){
         this!ctrl();
     }
 
+    Unit setDrain(Real newDrain){
+    	if(newDrain < 0 && newDrain >= -1/2 && level >= 4) drain = newDrain;
+    	if(newDrain > 0 && newDrain <= 1/2 && level <= 9)  drain = newDrain;
+    }
+
     Real getDrain(){
         return drain;
     }

@@ -43,7 +43,7 @@ sealed class ChiselOption{
 sealed class RegionOption{
     object BasicRegion : RegionOption()
     object UniformRegion : RegionOption()
-    object SplitRegion : RegionOption()
+    object CtrlRegion : RegionOption()
 }
 
 class Main : CliktCommand() {
@@ -52,7 +52,7 @@ class Main : CliktCommand() {
     private val regionOpt : RegionOption by mutuallyExclusiveOptions<RegionOption>(
         option(help="Does not compute any regions").switch("--basic" to RegionOption.BasicRegion),
         option(help="Computes regions using the called methods").switch("--uniform" to RegionOption.UniformRegion),
-        option(help="Computes regions using the called methods and controllers").switch("--split" to RegionOption.SplitRegion)
+        option(help="Computes regions using the called methods and controllers").switch("--control" to RegionOption.CtrlRegion)
     ).single().default(RegionOption.BasicRegion)
 
 
