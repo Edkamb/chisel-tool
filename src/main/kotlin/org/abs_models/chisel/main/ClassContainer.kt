@@ -183,8 +183,8 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
         val call  = collect(Call::class.java, mDecl)
         val create  = collect(NewExp::class.java, mDecl)
-        if(read.isEmpty() && call.isEmpty() && create.isEmpty() ){
-            output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls and creates no objects")
+        if(read.isEmpty() && call.isEmpty() && create.isEmpty() && extractSpec(mDecl,"Ensures") == "true"){
+            output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls, creates no objects and has no Ensures specification")
             return true
         }
 
@@ -198,29 +198,24 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         val init = translateGuard(extractInitial(mDecl))
         val impl  = extractImpl(mDecl) //todo: .second is no checked with read above
         var post = "(${CONTRACTVARIABLE} = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
-        post += when(reg){
+        post +=
+            if(read.isEmpty())  ")"  else //if no field is accessed, the method needs only to check method calls
+                when(reg){
             RegionOption.BasicRegion -> {
-                if(read.isEmpty()) ")"                          //if no field is accessed, the method needs only to check method calls
-                else            " & [{$trPh & true}]$inv)"
+                " & [{$trPh & true}]$inv)"
             }
             RegionOption.UniformRegion -> {
-                if(read.isEmpty()) ")"
-                else{
-                    val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
-                    val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
-                    val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                    " & [{$trPh & $region}]$inv)"
-                }
+                val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
+                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
+                val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                " & [{$trPh & $region}]$inv)"
             }
             RegionOption.CtrlRegion -> {
-                if(read.isEmpty()) ")"
-                else{
-                    val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
-                    val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
-                    var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                    region = "$region & !(${ctrlRegions.joinToString(" & ")})"
-                    " & [{$trPh & $region}]$inv)"
-                }
+                val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
+                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
+                var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                region = "$region & !(${ctrlRegions.joinToString(" & ")})"
+                " & [{$trPh & $region}]$inv)"
             }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec

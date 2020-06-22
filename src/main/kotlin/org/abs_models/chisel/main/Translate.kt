@@ -15,7 +15,7 @@ fun translateStmt(stmt: Stmt?) : String{
             }
         }
         is ReturnStmt -> {
-            return "$RESULTVARIABLE := ${translateExpr(stmt.retExp)}"
+            return "$RESULTVARIABLE := ${translateExpr(stmt.retExp)};"
         }
         is IfStmt -> {
             return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
