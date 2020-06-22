@@ -2,12 +2,14 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 import java.io.File
+import java.util.concurrent.TimeUnit
+
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
 
 open class CodeContainer{
     protected var fields : Set<String> = setOf(CONTRACTVARIABLE,RESULTVARIABLE)
-    fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : String{
+    fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : Boolean{
         val proof =
             """
         Definitions
@@ -19,11 +21,42 @@ open class CodeContainer{
         Problem
             $obl
         End.
+        Tactic "default"
+            US("skip;~>?true;") ; master
+        End.
         """.trimIndent()
         val f = File(path)
         f.mkdirs()
         File("$path/$file").writeText(proof)
-        return proof
+        if(keymaeraPath != "") {
+            val res = "java -jar $keymaeraPath -prove $path/$file".runCommand()
+            if(res != null) {
+                val answer = res.split("\n")
+                output("starting keymaera x: java -jar $keymaeraPath -prove $path/$file")
+                return answer[answer.size-2].startsWith("PROVED")
+            }
+        } else {
+            output(proof)
+        }
+
+        return false
+    }
+
+    /* https://stackoverflow.com/questions/35421699 */
+    private fun String.runCommand(
+        workingDir: File = File("."),
+        timeoutAmount: Long = 60,
+        timeoutUnit: TimeUnit = TimeUnit.SECONDS
+    ): String? = try {
+        ProcessBuilder(split("\\s".toRegex()))
+            .directory(workingDir)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .start().apply { waitFor(timeoutAmount, timeoutUnit) }
+            .inputStream.bufferedReader().readText()
+    } catch (e: java.io.IOException) {
+        e.printStackTrace()
+        null
     }
 }
 
@@ -39,7 +72,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
             throw Exception("option to use region $reg not supported yet")
     }
 
-    fun proofObligationInitial(){
+    fun proofObligationInitial() : Boolean{
         var initialProg = "?true"
         for(fDecl in cDecl.paramList ){
             fields = fields + fDecl.name
@@ -55,16 +88,17 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         }
         initialProg += ";"
         val res = proofObligation("$pre -> [$initialProg]$inv & contract = 1", "/tmp/chisel/$name", "init.kyx")
-        output("Inital proof obligation:\n$res\n")
+        output("Inital proof obligation result: \n$res\n", Verbosity.V)
+        return res
     }
 
-    fun proofObligationMethod(mDecl : MethodImpl){
+    fun proofObligationMethod(mDecl : MethodImpl) : Boolean{
         val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
         val call  = collect(Call::class.java, mDecl)
         val create  = collect(NewExp::class.java, mDecl)
         if(read.isEmpty() && call.isEmpty() && create.isEmpty() ){
             output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls and creates no objects")
-            return
+            return true
         }
 
 
@@ -95,16 +129,20 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
         val res = proofObligation("$pre -> [?$init;{$impl}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
-        output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n")
-
+        output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
+        return res
 
     }
 
-    fun proofObligationsAll() {
-        proofObligationInitial()
+    fun proofObligationsAll() : Boolean{
+        var res = proofObligationInitial()
+        output("verification result for ${cDecl.name}.<init>: $res")
         for(mDecl in cDecl.methods){
-            proofObligationMethod(mDecl)
+            val next =  proofObligationMethod(mDecl)
+            output("verification result for ${cDecl.name +"."+mDecl.methodSig.name}: $next")
+            res = res && next
         }
+        return res
     }
 
 }

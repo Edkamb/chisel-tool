@@ -1,4 +1,4 @@
-@file:Suppress("KotlinDeprecation", "KotlinDeprecation", "KotlinDeprecation", "KotlinDeprecation")
+@file:Suppress("KotlinDeprecation")
 
 package org.abs_models.chisel.main
 
@@ -19,6 +19,7 @@ import java.nio.file.Paths
 import kotlin.system.exitProcess
 
 var outPath = "."
+var keymaeraPath = ""
 enum class Verbosity { SILENT, NORMAL, V, VV, VVV }
 
 
@@ -77,11 +78,13 @@ class Main : CliktCommand() {
     ).single().required()
 
     private val out        by   option("--out","-o",help="path to a directory used to store the .kyx files").path().default(Paths.get(outPath))
+    private val jar        by   option("--kyx","-k",help="path to keymaerax.jar").path().default(Paths.get(""))
     private val verbose    by   option("--verbose", "-v",help="verbosity output level").int().restrictTo(Verbosity.values().indices).default(Verbosity.NORMAL.ordinal)
 
     override fun run() {
         verbosity = Verbosity.values()[verbose]
         outPath = "$out"
+        keymaeraPath = "$jar"
 
         output("Loading files....")
         val input = filePath.map{ File(it.toString()) }
@@ -101,54 +104,57 @@ class Main : CliktCommand() {
         if(model.hasTypeErrors())
             throw Exception("Compilation failed with type errors")
 
+        var res = false
         when(target) {
             is ChiselOption.MethodOption -> {
                 val tt = target as ChiselOption.MethodOption
-                proofObligationMethod(model, tt.path, regionOpt)
+                res =  proofObligationMethod(model, tt.path, regionOpt)
             }
             is ChiselOption.AllClassOption -> {
                 val tt = target as ChiselOption.AllClassOption
-                proofObligationsClass(model, tt.path, regionOpt)
+                res = proofObligationsClass(model, tt.path, regionOpt)
             }
             is ChiselOption.InitOption -> {
                 val tt = target as ChiselOption.InitOption
-                proofObligationInit(model, tt.path, regionOpt)
+                res = proofObligationInit(model, tt.path, regionOpt)
             }
             is ChiselOption.FullOption -> {
+                res = proofObligationMainBlock(model)
+                output("verification result for main block: $res")
                 for(mDecl in model.moduleDecls.filter { !it.name.startsWith("ABS.") }){
                     for(cDecl in mDecl.decls.filterIsInstance<ClassDecl>()){
-                        proofObligationsClass(model, mDecl.name+"."+cDecl.name,regionOpt)
+                        res = res && proofObligationsClass(model, mDecl.name+"."+cDecl.name,regionOpt)
+                        output("verification result for ${mDecl.name+"."+cDecl.name}: $res")
                     }
                 }
-                proofObligationMainBlock(model)
             }
             is ChiselOption.MainBlockOption -> {
-                proofObligationMainBlock(model)
+                res = proofObligationMainBlock(model)
             }
             else -> throw Exception("option $target not supported yet")
         }
 
-        output("done")
+        output("done: final result $res")
     }
 }
 
 
-fun proofObligationMethod(model: Model, path : String, regionOpt : RegionOption) {
+fun proofObligationMethod(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
     val metDecl = clazzCont.cDecl.methods.firstOrNull { it.methodSig.name == path.split(".")[2] }
     if(metDecl == null) throw Exception("method not found")
-    else                clazzCont.proofObligationMethod(metDecl)
+    else                return clazzCont.proofObligationMethod(metDecl)
 }
 
 
-fun proofObligationInit(model: Model, path : String, regionOpt : RegionOption) {
+fun proofObligationInit(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
-    clazzCont.proofObligationInitial()
+    return clazzCont.proofObligationInitial()
 }
 
-fun proofObligationsClass(model: Model, path : String, regionOpt : RegionOption) {
+fun proofObligationsClass(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
-    clazzCont.proofObligationsAll()
+    return clazzCont.proofObligationsAll()
 }
 
 fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassContainer{
@@ -166,7 +172,7 @@ fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassC
     else throw Exception("module not found")
 }
 
-fun proofObligationMainBlock(model: Model){
+fun proofObligationMainBlock(model: Model) : Boolean {
     val block = model.moduleDecls.firstOrNull { it.hasBlock() }?.block
     if(block == null) {
         System.err.println("Model contains no main block")
@@ -175,8 +181,7 @@ fun proofObligationMainBlock(model: Model){
     val prog = translateStmt(block)
     val cc = CodeContainer()
     val vars = collect(VarUse::class.java,block).map { it.name }
-    val res = cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
-    output("Proof obligation for main block:\n$res\n")
+    return cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
 }
 
 
