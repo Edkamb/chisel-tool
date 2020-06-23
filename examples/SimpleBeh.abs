@@ -1,0 +1,30 @@
+module NTank;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String);
+
+type Real = Rat;
+
+interface IDummy {
+    [HybridSpec: Requires("0 < r & r < 10")]
+    Unit reset(Real r);
+}
+
+[HybridSpec: Requires("0 < inVal & inVal < 10")]
+class CDummy(Real inVal) implements IDummy {
+
+[HybridSpec: ObjInv("0 <= level & level <= 10 & 0 <= inVal & inVal <= 10")]
+    physical{
+        Real level = 0 : level' = 5 - level/2; //level' = 0.5(10-level)
+    }
+
+    Unit run(){ level = inVal; }
+
+    Unit reset(Real r){
+        level = r;
+    }
+}
+
+{
+	new CDummy(5);
+}
+

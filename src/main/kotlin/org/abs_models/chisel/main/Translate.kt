@@ -22,11 +22,7 @@ fun translateStmt(stmt: Stmt?) : String{
         }
         is ExpressionStmt -> {
             return if(stmt.exp is PureExp) SKIP
-            else translateExpr(stmt.exp)
-        }
-        is AssignStmt -> {
-            return if(stmt.value is PureExp) stmt.`var`.name+" := "+translateExpr(stmt.value as Exp)+";"
-            else "{"+translateExpr(stmt.value as Exp) + "; "+stmt.`var`.name+" := *;}"
+                   else translateExpr(stmt.exp)
         }
         is VarDeclStmt -> {
             return if(stmt.varDecl.initExp is PureExp) stmt.varDecl.name+" := "+translateExpr(stmt.varDecl.initExp as Exp)+";"
@@ -42,8 +38,8 @@ fun translateStmt(stmt: Stmt?) : String{
 fun translateExpr(exp: Exp) : String{
     when(exp) {
         is DivMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
-        is MultMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
-        is ModMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
+        is MultMultExp -> return "(${translateExpr(exp.left)}*${translateExpr(exp.right)})"
+        is ModMultExp -> return "(${translateExpr(exp.left)}%${translateExpr(exp.right)})"
         is SubAddExp -> return "(${translateExpr(exp.left)}-${translateExpr(exp.right)})"
         is AddAddExp -> return "(${translateExpr(exp.left)}+${translateExpr(exp.right)})"
         is LTEQExp -> return "(${translateExpr(exp.left)}<=${translateExpr(exp.right)})"
@@ -75,7 +71,7 @@ fun translateExpr(exp: Exp) : String{
                 spec = spec.replace(cDecl.getParam(i).name, translateExpr(exp.getParam(i)))
             return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
         }
-        is GetExp -> return SKIP
+
         is PureExp -> return SKIP
         else -> {throw Exception("Translation not supported yet: $exp")}
     }

@@ -78,7 +78,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     //these are unprocessed user inputs
     private val pre = extractSpec(cDecl, "Requires")+" & contract = 1"
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
-    private val trPh = extractPhysical(cDecl.physical) + ", $TIMEVARIABLE' = 1"
+    private val trPh = extractPhysical(cDecl.physical)
     private val controllable = isControllable()
     private var ctrlRegions = mutableListOf<String>()
 
@@ -196,13 +196,13 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
 
         val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
-        val pre = "$inv & $CONTRACTVARIABLE = 1 & "+if(mSig != null){
+        val pre = "$inv & $CONTRACTVARIABLE = 1 & $TIMEVARIABLE = 0 & "+if(mSig != null){
             extractSpec(mSig,"Requires")
         } else "true"
 
 
         val init = translateGuard(extractInitial(mDecl))
-        val impl  = extractImpl(mDecl) //todo: .second is no checked with read above
+        val impl  = extractImpl(mDecl)
         var post = "(${CONTRACTVARIABLE} = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
         post +=
             if(read.isEmpty())  ")"  else //if no field is accessed, the method needs only to check method calls
@@ -214,14 +214,14 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                 val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                " & [{$trPh & $region}]$inv)"
+                " & [{$trPh, $TIMEVARIABLE' = 1 & $region}]$inv)"
             }
             RegionOption.CtrlRegion -> {
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                 var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
                 region = "$region & !(${ctrlRegions.joinToString(" & ")})"
-                " & [{$trPh & $region}]$inv)"
+                " & [{$trPh, $TIMEVARIABLE' = 1 & $region}]$inv)"
             }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
@@ -280,7 +280,7 @@ fun extractInitial(mImpl : MethodImpl) : Guard?{
 }
 
 
-fun extractImpl(mImpl : MethodImpl) : String{
+fun extractImpl(mImpl: MethodImpl) : String{
     val init = if(extractInitial(mImpl) == null) 0 else 1
     val sofar = emptyList<String>().toMutableList()
     for(i in init until mImpl.block.numStmt){
