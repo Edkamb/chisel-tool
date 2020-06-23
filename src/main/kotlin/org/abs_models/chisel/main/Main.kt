@@ -175,7 +175,7 @@ fun proofObligationMainBlock(model: Model) : Boolean {
     val prog = translateStmt(block)
     val cc = CodeContainer()
     val vars = collect(VarUse::class.java,block).map { it.name }
-    return cc.proofObligation("$CONTRACTVARIABLE = 1 -> [$prog]($CONTRACTVARIABLE = 1)","/tmp/chisel/main", "main.kyx",vars)
+    return cc.proofObligation("$CONTRACTVARIABLE = 1","$CONTRACTVARIABLE = 1", prog,"/tmp/chisel/main", "main.kyx",vars)
 }
 
 

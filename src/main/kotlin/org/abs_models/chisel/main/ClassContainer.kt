@@ -6,13 +6,19 @@ import java.util.concurrent.TimeUnit
 
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
+const val TIMEVARIABLE = "tv"
 
 /**
  * Manages some piece of code that generates proof obligations, i.e., a class or the main block
  */
 open class CodeContainer{
-    protected var fields : MutableSet<String> = mutableSetOf(CONTRACTVARIABLE,RESULTVARIABLE)
-    fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : Boolean{
+    protected var fields : MutableSet<String> = mutableSetOf(CONTRACTVARIABLE,RESULTVARIABLE,TIMEVARIABLE)
+    fun proofObligation(obl: String,
+                        pre: String,
+                        prog : String,
+                        path : String,
+                        file : String,
+                        extraFields : List<String> = emptyList()) : Boolean{
         val proof =
             """
         Definitions
@@ -22,7 +28,7 @@ open class CodeContainer{
             ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
         End.
         Problem
-            $obl
+            ($pre) -> [$prog]($obl)
         End.
         Tactic "default"
             US("skip;~>?true;") ; master
@@ -72,7 +78,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     //these are unprocessed user inputs
     private val pre = extractSpec(cDecl, "Requires")+" & contract = 1"
     private val inv =  extractSpec(cDecl.physical, "ObjInv")
-    private val trPh = extractPhysical(cDecl.physical)
+    private val trPh = extractPhysical(cDecl.physical) + ", $TIMEVARIABLE' = 1"
     private val controllable = isControllable()
     private var ctrlRegions = mutableListOf<String>()
 
@@ -86,7 +92,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
                         ctrlRegions.add(getCtrlRegion(mImpl))
                     }
                 }
-                output("controlled region: ${ctrlRegions.joinToString(" & ")}", Verbosity.VVV)
+                output("controlled region: ${ctrlRegions.joinToString(" & ")}", Verbosity.NORMAL)
             }else {
                 output("Class ${cDecl.name} is not controllable, falling back to uniform regions", Verbosity.NORMAL)
             }
@@ -127,7 +133,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     }
 
     private fun getCtrlRegion(mImpl: MethodImpl) : String{
-        val init =  extractInitial(mImpl) as DifferentialGuard
+        val init =  extractInitial(mImpl)
         return translateGuard(init)
     }
 
@@ -174,7 +180,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             initialProg += ";${fDecl.name} := ${translateExpr(diffInit.initVal)}"
         }
         initialProg += ";"
-        val res = proofObligation("$pre -> [$initialProg]$inv & contract = 1", "/tmp/chisel/$name", "init.kyx")
+        val res = proofObligation("$inv & contract = 1", pre, initialProg,"/tmp/chisel/$name", "init.kyx")
         output("Inital proof obligation result: \n$res\n", Verbosity.V)
         return res
     }
@@ -219,7 +225,9 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
-        val res = proofObligation("$pre -> [?$init;{$impl}]$post", "/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+        val res = proofObligation(
+            post,
+            pre,"?$init;{$impl}","/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
         return res
 
@@ -266,7 +274,7 @@ fun extractPhysical(physicalImpl: PhysicalImpl) : String{
 
 fun extractInitial(mImpl : MethodImpl) : Guard?{
     val lead = mImpl.block.getStmt(0)
-    return if(lead is AwaitStmt && lead.guard is DifferentialGuard){
+    return if(lead is AwaitStmt && (lead.guard is DifferentialGuard || lead.guard is DurationGuard)){
         lead.guard
     }else null
 }

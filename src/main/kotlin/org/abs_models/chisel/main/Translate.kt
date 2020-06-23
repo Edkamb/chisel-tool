@@ -89,7 +89,7 @@ fun translateGuard(exp: Guard?) : String{
         is ExpGuard -> translateExpr(exp.pureExp)
         is AndGuard -> "(${translateGuard(exp.left)}) & (${translateGuard(exp.right)})"
         is OrGuard -> "(${translateGuard(exp.left)}) | (${translateGuard(exp.right)})"
-        is DurationGuard -> "t >= ${translateExpr(exp.min)}"
+        is DurationGuard -> "$TIMEVARIABLE >= ${translateExpr(exp.min)}"
         is ClaimGuard -> "true"
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
