@@ -23,15 +23,11 @@ fun findClass(model: Model, inName : String) : ClassDecl {
     throw Exception("cannot find class $inName to extract its creation condition")
 }
 
-fun findInterfaceDecl(model: Model, methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig? {
-    //for (mDecl in model.moduleDecls.filter { !it.name.startsWith("ABS.") }){
-      //  for( iDecl in mDecl.decls.filterIsInstance<InterfaceDecl>()){
+fun findInterfaceDecl(methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig? {
        for( iDecl in classDecl.implementedInterfaceUseList.map { it.decl as InterfaceDecl }){
             for( mDecl in iDecl.allMethodSigs){
                 if(mDecl.matches(methodImpl.methodSig)) return mDecl
             }
         }
-    //}
     return null
-
 }

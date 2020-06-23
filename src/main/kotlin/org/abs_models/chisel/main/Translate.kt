@@ -61,7 +61,7 @@ fun translateExpr(exp: Exp) : String{
         is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
         is AsyncCall -> {
             val mSig = exp.methodSig
-            val mSsig = findInterfaceDecl(exp.model, mSig.contextMethod, mSig.contextDecl as ClassDecl) ?: return SKIP
+            val mSsig = findInterfaceDecl(mSig.contextMethod, mSig.contextDecl as ClassDecl) ?: return SKIP
             var spec = extractSpec(mSsig,"Requires")
 
             for(i in 0 until exp.numParam)

@@ -1,4 +1,4 @@
-@file:Suppress("KotlinDeprecation")
+@file:Suppress("KotlinDeprecation", "RemoveExplicitTypeArguments")
 
 package org.abs_models.chisel.main
 
@@ -18,7 +18,7 @@ import java.io.File
 import java.nio.file.Paths
 import kotlin.system.exitProcess
 
-var outPath = "."
+var outPath = "/tmp/"
 var keymaeraPath = ""
 enum class Verbosity { SILENT, NORMAL, V, VV, VVV }
 
@@ -34,7 +34,6 @@ sealed class ChiselOption{
     data class MethodOption(val path : String) : ChiselOption()
     data class InitOption(val path : String) : ChiselOption()
     data class AllClassOption(val path : String) : ChiselOption()
-    data class DirectClassOption(val path : String) : ChiselOption()
     object MainBlockOption : ChiselOption()
     object FullOption : ChiselOption()
 }
@@ -57,7 +56,7 @@ class Main : CliktCommand() {
 
 
     private val target : ChiselOption by mutuallyExclusiveOptions<ChiselOption>(
-        option("--method","-m",help="Verifies a single method <module>.<class.<method>")
+        option("--method","-m",help="Verifies a single method <module>.<class>.<method>")
             .convert { ChiselOption.MethodOption(it) as ChiselOption }
             .validate { require((it as ChiselOption.MethodOption).path.split(".").size == 3,
                 lazyMessage = {"invalid fully qualified method name $it"}) },
@@ -69,17 +68,13 @@ class Main : CliktCommand() {
             .convert {  ChiselOption.AllClassOption(it) as ChiselOption }
             .validate { require((it as ChiselOption.AllClassOption).path.split(".").size == 2,
                 lazyMessage = {"invalid fully qualified class name $it"}) },
-        option("--directclass","-d",help="encodes <module>.<class> directly into a double loop structure (LITES approach)")
-            .convert {  ChiselOption.DirectClassOption(it) as ChiselOption }
-            .validate { require((it as ChiselOption.DirectClassOption).path.split(".").size == 2,
-                lazyMessage = {"invalid fully qualified class name $it"}) },
         option(help="Verifies the main block of the model").switch("--main" to ChiselOption.MainBlockOption),
-        option(help="Verifies the full model (not using -d)").switch("--full" to ChiselOption.FullOption)
+        option(help="Verifies the full model").switch("--full" to ChiselOption.FullOption)
     ).single().required()
 
-    private val out        by   option("--out","-o",help="path to a directory used to store the .kyx files").path().default(Paths.get(outPath))
-    private val jar        by   option("--kyx","-k",help="path to keymaerax.jar").path().default(Paths.get(""))
-    private val verbose    by   option("--verbose", "-v",help="verbosity output level").int().restrictTo(Verbosity.values().indices).default(Verbosity.NORMAL.ordinal)
+    private val out        by   option("--out","-o",help="Path to a directory used to store the .kyx files. Default is /tmp/").path().default(Paths.get(outPath))
+    private val jar        by   option("--kyx","-k",help="Path to keymaerax.jar (>= 4.8.0). If this is not set, proof obligations are generated but not checked.").path().default(Paths.get(""))
+    private val verbose    by   option("--verbose", "-v",help="Verbosity output level (0-4)").int().restrictTo(Verbosity.values().indices).default(Verbosity.NORMAL.ordinal)
 
     override fun run() {
         verbosity = Verbosity.values()[verbose]
@@ -131,7 +126,6 @@ class Main : CliktCommand() {
             is ChiselOption.MainBlockOption -> {
                 res = proofObligationMainBlock(model)
             }
-            else -> throw Exception("option $target not supported yet")
         }
 
         output("done: final result $res")

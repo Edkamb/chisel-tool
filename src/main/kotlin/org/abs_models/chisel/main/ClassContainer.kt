@@ -11,7 +11,7 @@ const val RESULTVARIABLE = "result"
  * Manages some piece of code that generates proof obligations, i.e., a class or the main block
  */
 open class CodeContainer{
-    protected var fields : Set<String> = setOf(CONTRACTVARIABLE,RESULTVARIABLE)
+    protected var fields : MutableSet<String> = mutableSetOf(CONTRACTVARIABLE,RESULTVARIABLE)
     fun proofObligation(obl: String, path : String, file : String, extraFields : List<String> = emptyList()) : Boolean{
         val proof =
             """
@@ -162,14 +162,14 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     fun proofObligationInitial() : Boolean{
         var initialProg = "?true"
         for(fDecl in cDecl.paramList ){
-            fields = fields + fDecl.name
+            fields.add(fDecl.name)
         }
         for(fDecl in cDecl.fields ){
-            fields += fDecl.name
+            fields.add(fDecl.name)
             initialProg += ";${fDecl.name} := ${translateExpr(fDecl.initExp)}"
         }
         for(fDecl in cDecl.physical.fields ) {
-            fields += fDecl.name
+            fields.add(fDecl.name)
             val diffInit = fDecl.initExp as DifferentialExp
             initialProg += ";${fDecl.name} := ${translateExpr(diffInit.initVal)}"
         }
@@ -189,7 +189,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         }
 
 
-        val mSig = findInterfaceDecl(mDecl.model, mDecl, mDecl.contextDecl as ClassDecl)
+        val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
         val pre = "$inv & $CONTRACTVARIABLE = 1 & "+if(mSig != null){
             extractSpec(mSig,"Requires")
         } else "true"
