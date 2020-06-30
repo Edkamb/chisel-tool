@@ -46,11 +46,12 @@ fun translateExpr(exp: Exp) : String{
         is LTExp -> return "(${translateExpr(exp.left)}<${translateExpr(exp.right)})"
         is GTExp -> return "(${translateExpr(exp.left)}>${translateExpr(exp.right)})"
         is GTEQExp -> return "(${translateExpr(exp.left)}>=${translateExpr(exp.right)})"
-        is EqExp -> return "(${translateExpr(exp.left)}==${translateExpr(exp.right)})"
-        is NotEqExp -> return "(${translateExpr(exp.left)}!=${translateExpr(exp.right)})"
+        is EqExp -> return "(${translateExpr(exp.left)}=${translateExpr(exp.right)})"
+        is NotEqExp -> return "(!${translateExpr(exp.left)}=${translateExpr(exp.right)})"
         is OrBoolExp -> return "(${translateExpr(exp.left)}|${translateExpr(exp.right)})"
         is AndBoolExp -> return "(${translateExpr(exp.left)}&${translateExpr(exp.right)})"
         is IntLiteral -> return "(${exp.content})"
+        is MinusExp -> return "(-${translateExpr(exp.operand)})"
         is FieldUse -> return "$exp"
         is VarUse -> return "$exp"
         is DiffOpExp -> return "${translateExpr(exp.getChild(0) as Exp)}'"
@@ -71,8 +72,6 @@ fun translateExpr(exp: Exp) : String{
                 spec = spec.replace(cDecl.getParam(i).name, translateExpr(exp.getParam(i)))
             return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
         }
-
-        is PureExp -> return SKIP
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
 }

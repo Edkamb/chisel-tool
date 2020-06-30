@@ -92,7 +92,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
                         ctrlRegions.add(getCtrlRegion(mImpl))
                     }
                 }
-                output("controlled region: ${ctrlRegions.joinToString(" & ")}", Verbosity.NORMAL)
+                output("controlled region: ${getRegionString()}", Verbosity.NORMAL)
             }else {
                 output("Class ${cDecl.name} is not controllable, falling back to uniform regions", Verbosity.NORMAL)
             }
@@ -167,20 +167,22 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     //TODO: this does not handle run correctly
     fun proofObligationInitial() : Boolean{
         var initialProg = "?true"
+        var equalities = "true"
         for(fDecl in cDecl.paramList ){
             fields.add(fDecl.name)
         }
         for(fDecl in cDecl.fields ){
             fields.add(fDecl.name)
-            initialProg += ";${fDecl.name} := ${translateExpr(fDecl.initExp)}"
+            equalities += " & ${fDecl.name} = ${translateExpr(fDecl.initExp)}"
         }
         for(fDecl in cDecl.physical.fields ) {
             fields.add(fDecl.name)
             val diffInit = fDecl.initExp as DifferentialExp
-            initialProg += ";${fDecl.name} := ${translateExpr(diffInit.initVal)}"
+            equalities += "& ${fDecl.name} = ${translateExpr(diffInit.initVal)}"
+            initialProg += ";${translateExpr(diffInit.left)} := ${translateExpr(diffInit.right)}"
         }
         initialProg += ";"
-        val res = proofObligation("$inv & contract = 1", pre, initialProg,"/tmp/chisel/$name", "init.kyx")
+        val res = proofObligation(inv, "($pre) & ($equalities)", initialProg,"/tmp/chisel/$name", "init.kyx")
         output("Inital proof obligation result: \n$res\n", Verbosity.V)
         return res
     }
@@ -220,7 +222,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                 var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                region = "$region & !(${ctrlRegions.joinToString(" & ")})"
+                region = "$region & !(${getRegionString()})"
                 " & [{$trPh, $TIMEVARIABLE' = 1 & $region}]$inv)"
             }
         }
@@ -231,6 +233,11 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
         return res
 
+    }
+
+    private fun getRegionString() : String {
+        if(ctrlRegions.isEmpty()) return "true"
+        return ctrlRegions.joinToString(" & ")
     }
 
     fun proofObligationsAll() : Boolean{
