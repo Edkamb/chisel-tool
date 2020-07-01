@@ -125,9 +125,10 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
     fun proofObligationMethod(mDecl : MethodImpl) : Boolean{
         val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
-        val call  = collect(Call::class.java, mDecl)
+        val call  = collectMustHaveCalled(mDecl.block, emptySet()) //collect(Call::class.java, mDecl)
+        val mayCall  = collect(Call::class.java, mDecl)
         val create  = collect(NewExp::class.java, mDecl)
-        if(read.isEmpty() && call.isEmpty() && create.isEmpty() && extractSpec(mDecl,"Ensures") == "true"){
+        if(read.isEmpty() && mayCall.isEmpty() && create.isEmpty() && extractSpec(mDecl,"Ensures") == "true"){
             output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls, creates no objects and has no Ensures specification")
             return true
         }
