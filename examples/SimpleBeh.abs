@@ -5,26 +5,31 @@ data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRe
 type Real = Rat;
 
 interface IDummy {
-    [HybridSpec: Requires("0 < r & r < 10")]
-    Unit reset(Real r);
+    Unit resetLimit(Real r);
+
+    [HybridSpec: Requires("0 < r")]
+    Unit bucket(Real r);
 }
 
-[HybridSpec: Requires("0 < inVal & inVal < 10")]
-class CDummy(Real inVal) implements IDummy {
+[HybridSpec: Requires("0 < inVal & inVal < inLimit")]
+class CDummy(Real inVal, Real inLimit) implements IDummy {
 
-[HybridSpec: ObjInv("0 <= level & level <= 10 & 0 <= inVal & inVal <= 10")]
+[HybridSpec: ObjInv("0 <= level & level <= limit")]
     physical{
-        Real level = 0 : level' = 5 - level/2; //level' = 0.5(10-level)
+        Real level = inVal   : level' = limit/2 - level/2;
+        Real limit = inLimit : limit' = 0;
     }
 
-    Unit run(){ level = inVal; }
+    Unit resetLimit(Real r){
+        if( r >= level) limit = r;
+    }
 
-    Unit reset(Real r){
-        level = r;
+    Unit bucket(Real r){
+        if (r <= level) level = level - r;
     }
 }
 
 {
-	new CDummy(5);
+	new CDummy(5,10);
 }
 

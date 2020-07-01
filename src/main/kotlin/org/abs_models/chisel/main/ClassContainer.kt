@@ -24,6 +24,9 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         fields.addAll(cDecl.fields.map { it.name })
         fields.addAll(cDecl.physical.fields.map { it.name })
 
+        //if the class contains gets or durations we have no guarantees about scheduling and fall back to basic regions
+        if(!isUrgent()) reg = RegionOption.BasicRegion
+
         //for the controlled Region we ensure that the class is controllable and fall back to uniform regions if it is not
         if(reg == RegionOption.CtrlRegion) {
             output("Class ${cDecl.name} is controllable: $controllable", Verbosity.VVV)
@@ -40,11 +43,15 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         }
     }
 
+    private fun isUrgent() : Boolean {
+        return collect(GetExp::class.java, cDecl).isEmpty() &&  collect(DurationStmt::class.java, cDecl).isEmpty()
+
+    }
+
     //xxx: we do not check that run is not exposed
     /**
      * This checks that the class is controllable:
-     *  - no gets
-     *  - no durations
+     *  - (is urgent)
      *  - no synchronous calls (for simplicity)
      *  - no calls to run
      *  - run is a sequence of asynchronous calls
@@ -59,10 +66,6 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             } else {
                 val init = if (extractInitial(mImpl) == null) 0 else 1
                 for (i in init until mImpl.block.numStmt) {
-                    if (collect(GetExp::class.java, mImpl.block.getStmt(i)).isNotEmpty())
-                        return false
-                    if (collect(DurationStmt::class.java, mImpl.block.getStmt(i)).isNotEmpty())
-                        return false
                     if (collect(SyncCall::class.java, mImpl.block.getStmt(i)).isNotEmpty())
                         return false
                     if (collect(Call::class.java, mImpl.block.getStmt(i)).any { it.methodSig.matches(runSig) })
