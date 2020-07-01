@@ -2,15 +2,12 @@ module PhaseModule;
 
 data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String);
 
-interface R {}
-
 type Real = Rat;
-
-class Robot() implements R {
-
 
 //This models a hybridized diode
 //beware: Right now this has funny simulation behavior because ctrl2 is not modeling an event correctly
+class Diode {
+
 [HybridSpec: ObjInv("(flag = 1 | flag = 0) & (w > 0 -> ( flag = 1 & diode = w & diode' = w')) & (w <= 0 -> ( flag = 0 & diode = 0 & diode' = 0)) & diode >= 0")]
 	physical{
 		Real v = 0: v' = w;
@@ -40,5 +37,5 @@ class Robot() implements R {
 }
 
 {
-	R r = new Robot();
+	new Diode();
 }

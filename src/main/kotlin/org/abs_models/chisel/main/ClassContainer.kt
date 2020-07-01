@@ -1,73 +1,10 @@
 package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
-import java.io.File
-import java.util.concurrent.TimeUnit
 
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
 const val TIMEVARIABLE = "tv"
-
-/**
- * Manages some piece of code that generates proof obligations, i.e., a class or the main block
- */
-open class CodeContainer{
-    protected var fields : MutableSet<String> = mutableSetOf(CONTRACTVARIABLE,RESULTVARIABLE,TIMEVARIABLE)
-    fun proofObligation(obl: String,
-                        pre: String,
-                        prog : String,
-                        path : String,
-                        file : String,
-                        extraFields : List<String> = emptyList()) : Boolean{
-        val proof =
-            """
-        Definitions
-            HP skip ::= { ?true; };
-        End.
-        ProgramVariables
-            ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
-        End.
-        Problem
-            ($pre) -> [$prog]($obl)
-        End.
-        Tactic "default"
-            US("skip;~>?true;") ; master
-        End.
-        """.trimIndent()
-        val f = File(path)
-        f.mkdirs()
-        File("$path/$file").writeText(proof)
-        if(keymaeraPath != "") {
-            val res = "java -jar $keymaeraPath -prove $path/$file".runCommand()
-            if(res != null) {
-                val answer = res.split("\n")
-                output("starting keymaera x: java -jar $keymaeraPath -prove $path/$file")
-                return answer[answer.size-2].startsWith("PROVED")
-            }
-        } else {
-            output(proof)
-        }
-
-        return false
-    }
-
-    /* https://stackoverflow.com/questions/35421699 */
-    private fun String.runCommand(
-        workingDir: File = File("."),
-        timeoutAmount: Long = 60,
-        timeoutUnit: TimeUnit = TimeUnit.SECONDS
-    ): String? = try {
-        ProcessBuilder(split("\\s".toRegex()))
-            .directory(workingDir)
-            .redirectOutput(ProcessBuilder.Redirect.PIPE)
-            .redirectError(ProcessBuilder.Redirect.PIPE)
-            .start().apply { waitFor(timeoutAmount, timeoutUnit) }
-            .inputStream.bufferedReader().readText()
-    } catch (e: java.io.IOException) {
-        e.printStackTrace()
-        null
-    }
-}
 
 /**
  * reg is variable because we may fall back to uniform regions if the class is not controllable
@@ -83,6 +20,10 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     private var ctrlRegions = mutableListOf<String>()
 
     init {
+        fields.addAll(cDecl.paramList.map { it.name })
+        fields.addAll(cDecl.fields.map { it.name })
+        fields.addAll(cDecl.physical.fields.map { it.name })
+
         //for the controlled Region we ensure that the class is controllable and fall back to uniform regions if it is not
         if(reg == RegionOption.CtrlRegion) {
             output("Class ${cDecl.name} is controllable: $controllable", Verbosity.VVV)
@@ -168,21 +109,16 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     fun proofObligationInitial() : Boolean{
         var initialProg = "?true"
         var equalities = "true"
-        for(fDecl in cDecl.paramList ){
-            fields.add(fDecl.name)
-        }
         for(fDecl in cDecl.fields ){
-            fields.add(fDecl.name)
             equalities += " & ${fDecl.name} = ${translateExpr(fDecl.initExp)}"
         }
         for(fDecl in cDecl.physical.fields ) {
-            fields.add(fDecl.name)
             val diffInit = fDecl.initExp as DifferentialExp
             equalities += "& ${fDecl.name} = ${translateExpr(diffInit.initVal)}"
             initialProg += ";${translateExpr(diffInit.left)} := ${translateExpr(diffInit.right)}"
         }
         initialProg += ";"
-        val res = proofObligation(inv, "($pre) & ($equalities)", initialProg,"/tmp/chisel/$name", "init.kyx")
+        val res = proofObligationPure(inv, "($pre) & ($equalities)", initialProg,"/tmp/chisel/$name", "init.kyx")
         output("Inital proof obligation result: \n$res\n", Verbosity.V)
         return res
     }
@@ -205,30 +141,32 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
         val init = translateGuard(extractInitial(mDecl))
         val impl  = extractImpl(mDecl)
-        var post = "(${CONTRACTVARIABLE} = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
-        post +=
-            if(read.isEmpty())  ")"  else //if no field is accessed, the method needs only to check method calls
-                when(reg){
+        val post = "$CONTRACTVARIABLE = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
+        val dynamics =
+            if(read.isEmpty())  "skip"  else //if no field is accessed, the method needs only to check method calls
+            when(reg){
             RegionOption.BasicRegion -> {
-                " & [{$trPh & true}]$inv)"
+                "{$trPh & true}"
             }
             RegionOption.UniformRegion -> {
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                 val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
-                " & [{$trPh, $TIMEVARIABLE' = 1 & $region}]$inv)"
+                " {$trPh, $TIMEVARIABLE' = 1 & $region}"
             }
             RegionOption.CtrlRegion -> {
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
                 var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
                 region = "$region & !(${getRegionString()})"
-                " & [{$trPh, $TIMEVARIABLE' = 1 & $region}]$inv)"
+                " {$trPh, $TIMEVARIABLE' = 1 & $region}"
             }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
-        val res = proofObligation(
+        val res = proofObligationComposed(
             post,
+            dynamics,
+            inv,
             pre,"?$init;{$impl}","/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
         return res
