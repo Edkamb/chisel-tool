@@ -19,7 +19,8 @@ open class CodeContainer{
                             prog : String,
                             path : String,
                             file : String,
-                            extraFields : List<String> = emptyList()) : Boolean{
+                            extraFields : List<String> = emptyList(),
+                            tactic : String = "expandAllDefs; master") : Boolean{
 
         val proof =
         """
@@ -38,7 +39,7 @@ open class CodeContainer{
         |    $prob
         |End.
         |Tactic "default"
-        |    expandAllDefs; master
+        |    $tactic
         |End.
         """.trimMargin()
 
@@ -102,7 +103,8 @@ open class CodeContainer{
                         prog : String,
                         path : String,
                         file : String,
-                        extraFields : List<String> = emptyList()) : Boolean{
+                        extraFields : List<String> = emptyList(),
+                        tactic : String) : Boolean{
         var newpre = pre
         var newcPost = cPost
         var newdPost = dPost
@@ -141,7 +143,7 @@ open class CodeContainer{
             |   ) 
             """.trimMargin()
 
-        return proofObligation(extra, prob, prog, path, file, extraFields)
+        return proofObligation(extra, prob, prog, path, file, extraFields, tactic)
     }
 
 

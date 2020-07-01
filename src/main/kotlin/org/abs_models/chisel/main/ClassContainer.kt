@@ -151,23 +151,24 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             RegionOption.UniformRegion -> {
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
-                val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                val region = if (dGuards.isEmpty()) "false" else dGuards.joinToString( "&" )
                 " {$trPh, $TIMEVARIABLE' = 1 & $region}"
             }
             RegionOption.CtrlRegion -> {
                 val guards = call.map {  extractInitial(find(it.methodSig, cDecl) )}
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!("+translateGuard(it.condition)+")" }
-                var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString( "&" )
+                var region = if (dGuards.isEmpty()) "false" else dGuards.joinToString( "&" )
                 region = "$region & !(${getRegionString()})"
                 " {$trPh, $TIMEVARIABLE' = 1 & $region}"
             }
         }
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }//mDecl.methodSig.paramList.map { it.name } ++ collec
+        val tactic = extractSpec(mDecl,"Tactic", default = "expandAllDefs; master")
         val res = proofObligationComposed(
             post,
             dynamics,
             inv,
-            pre,"?$init;{$impl}","/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields)
+            pre,"?$init;{$impl}","/tmp/chisel/$name", "${mDecl.methodSig.name}.kyx", extraFields, tactic)
         output("Method proof obligation for ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
         return res
 

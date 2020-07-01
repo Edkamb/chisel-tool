@@ -1,6 +1,6 @@
 module PhaseModule;
 
-data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String);
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String) | Tactic(String);
 
 type Real = Rat;
 
@@ -21,12 +21,15 @@ class Diode {
 		this!ctrl1();
 	}
 
+[HybridSpec: Tactic("expandAllDefs; master; <( fullSimplify ; DEs(1) ; master, DW(1) ; fullSimplify ; master ; DEs(1) ; master )")]
 	Unit ctrl1(){
 		await diff w <= 0;
 		if(flag == 1)
 		    flag = 0;
 		this!ctrl2();
 	}
+
+[HybridSpec: Tactic("expandAllDefs; master ; <( fullSimplify ; DEs(1) ; master,  DW(1) ; DEs(1) ; master )")]
 	Unit ctrl2(){
 		await diff w > 0;
 		if(flag == 0)
