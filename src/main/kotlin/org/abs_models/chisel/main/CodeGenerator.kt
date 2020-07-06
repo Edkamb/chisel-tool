@@ -14,7 +14,7 @@ open class CodeContainer{
     )
 
 
-    private fun proofObligation(extraDefs: String,
+    fun proofObligation(extraDefs: String,
                             prob: String,
                             prog : String,
                             path : String,
@@ -69,7 +69,7 @@ open class CodeContainer{
                         prog : String,
                         path : String,
                         file : String,
-                        extraFields : List<String> = emptyList()) : Boolean{
+                        extraFields : List<String> = emptyList(), tactic: String = "expandAllDefs; master") : Boolean{
         var newpre = pre
         var newobl = obl
         fields.forEach { newpre = newpre.replace("$it'","${it}der"); newobl = newobl.replace("$it'","${it}der"); }
@@ -91,8 +91,14 @@ open class CodeContainer{
             |   [prog;](post($paramListCallSubst)) 
             """.trimMargin()
 
-        return proofObligation(extra, prob, prog, path, file, extraFields)
+        return proofObligation(extra, prob, prog, path, file, extraFields, tactic)
     }
+
+
+
+
+
+
 
     /*pre -> [prog](dPost /\ [dynam]cPost)*/
     fun proofObligationComposed(
@@ -104,7 +110,7 @@ open class CodeContainer{
                         path : String,
                         file : String,
                         extraFields : List<String> = emptyList(),
-                        tactic : String) : Boolean{
+                        tactic : String = "expandAllDefs; master") : Boolean{
         var newpre = pre
         var newcPost = cPost
         var newdPost = dPost

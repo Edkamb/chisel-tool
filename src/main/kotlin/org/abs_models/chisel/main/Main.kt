@@ -34,6 +34,7 @@ sealed class ChiselOption{
     data class MethodOption(val path : String) : ChiselOption()
     data class InitOption(val path : String) : ChiselOption()
     data class AllClassOption(val path : String) : ChiselOption()
+    data class ZenoOption(val path : String) : ChiselOption()
     object MainBlockOption : ChiselOption()
     object FullOption : ChiselOption()
 }
@@ -67,6 +68,10 @@ class Main : CliktCommand() {
         option("--class","-c",help="Verifies the initial block and all methods of <module>.<class>")
             .convert {  ChiselOption.AllClassOption(it) as ChiselOption }
             .validate { require((it as ChiselOption.AllClassOption).path.split(".").size == 2,
+                lazyMessage = {"invalid fully qualified class name $it"}) },
+        option("--zeno","-z",help="Verifies absence of zeno behavior of <module>.<class> this ignores the region setting")
+            .convert {  ChiselOption.ZenoOption(it) as ChiselOption }
+            .validate { require((it as ChiselOption.ZenoOption).path.split(".").size == 2,
                 lazyMessage = {"invalid fully qualified class name $it"}) },
         option(help="Verifies the main block of the model").switch("--main" to ChiselOption.MainBlockOption),
         option(help="Verifies the full model").switch("--full" to ChiselOption.FullOption)
@@ -109,6 +114,10 @@ class Main : CliktCommand() {
                 val tt = target as ChiselOption.AllClassOption
                 res = proofObligationsClass(model, tt.path, regionOpt)
             }
+            is ChiselOption.ZenoOption -> {
+                val tt = target as ChiselOption.ZenoOption
+                res = proofObligationZenoClass(model, tt.path, RegionOption.CtrlRegion)
+            }
             is ChiselOption.InitOption -> {
                 val tt = target as ChiselOption.InitOption
                 res = proofObligationInit(model, tt.path, regionOpt)
@@ -149,6 +158,10 @@ fun proofObligationInit(model: Model, path : String, regionOpt : RegionOption) :
 fun proofObligationsClass(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
     return clazzCont.proofObligationsAll()
+}
+fun proofObligationZenoClass(model: Model, path : String, regionOpt : RegionOption) : Boolean {
+    val clazzCont = getContainer(model, path, regionOpt)
+    return clazzCont.proofObligationZeno()
 }
 
 fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassContainer{

@@ -5,6 +5,7 @@ import abs.frontend.ast.*
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
 const val TIMEVARIABLE = "tv"
+const val ZENOLIMITVARIABLE = "zlimitvar"
 
 /**
  * reg is variable because we may fall back to uniform regions if the class is not controllable
@@ -121,7 +122,8 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             initialProg += ";${translateExpr(diffInit.left)} := ${translateExpr(diffInit.right)}"
         }
         initialProg += ";"
-        val res = proofObligationPure(inv, "($pre) & ($equalities)", initialProg,"/tmp/chisel/$name", "init.kyx")
+        val res = proofObligationPure(inv, "($pre) & ($equalities)", initialProg,"/tmp/chisel/$name", "init.kyx",
+            emptyList(),"expandAllDefs; master")
         output("Inital proof obligation result: \n$res\n", Verbosity.V)
         return res
     }
@@ -178,9 +180,47 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
     }
 
-    private fun getRegionString() : String {
+    private fun getRegionString(connector : String = " | ") : String {
         if(ctrlRegions.isEmpty()) return "true"
-        return ctrlRegions.joinToString(" & ")
+        return ctrlRegions.joinToString(connector) { "($it)" }
+    }
+
+    //draft
+    fun proofObligationZeno() : Boolean {
+        if(!isControllable()) return false
+        for ( mDecl in cDecl.methods ) {
+            if(mDecl.methodSig.name =="run") continue
+            if(isController(mDecl)) continue
+            val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
+            val create  = collect(NewExp::class.java, mDecl)
+            if(read.isNotEmpty() || create.isNotEmpty()) return false
+        }
+        val obls = mutableListOf<String>()
+        val extraFields = mutableListOf<String>()
+        for ( mDecl in cDecl.methods ) {
+            if(mDecl.methodSig.name =="run") continue
+            if(!isController(mDecl)) continue
+
+            val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
+            val pre = "$inv & $CONTRACTVARIABLE = 1 & "+if(mSig != null){
+                extractSpec(mSig,"Requires")
+            } else "true"
+            val init = translateGuard(extractInitial(mDecl))
+            val impl  = extractImpl(mDecl)
+            val post = "!(${getRegionString("|")})"
+            val dynamics = "$TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $TIMEVARIABLE <= $ZENOLIMITVARIABLE}" //?$TIMEVARIABLE >= $ZENOLIMITVARIABLE;"
+            extraFields +=  collect(VarUse::class.java,mDecl).map { it.name }
+            val res = "(($pre & $init & $inv) -> [$impl$dynamics]$post)"
+            println(res)
+            obls.add(res)
+
+        }
+        return proofObligation(
+            "",
+            "\\exists $ZENOLIMITVARIABLE ($ZENOLIMITVARIABLE > 0 & ${obls.joinToString ("&")})",
+            "?true;",
+            "/tmp/chisel/$name",
+            "zeno.kyx",extraFields, "expandAllDefs; master")
     }
 
     fun proofObligationsAll() : Boolean{
