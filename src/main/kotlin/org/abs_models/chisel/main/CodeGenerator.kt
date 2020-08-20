@@ -125,6 +125,7 @@ open class CodeContainer{
         val paramListDer = "${(fields+extraFields).joinToString(", ") { "Real $it" }}, ${(fields+extraFields).joinToString(", ") { "Real ${it}der" }}"
         val paramListCallSubst = "${(fields+extraFields).joinToString(", ") { it }}, ${(fields+extraFields).joinToString(", ") { "${it}'" }}"
 
+        //TODO: beware, cPost is computed once per method right now. It must be computed for every await and the return separately.
         val extra =
             """
             |HP dynam ::= {$dynam};
