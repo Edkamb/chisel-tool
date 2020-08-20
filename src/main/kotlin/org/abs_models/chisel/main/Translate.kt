@@ -3,6 +3,9 @@ package org.abs_models.chisel.main
 import abs.frontend.ast.*
 
 const val SKIP = "skip;"
+const val PLACEHOLDERCHECK = "#C";
+const val PLACEHOLDERANON = "#A";
+const val PLACEHOLDERCOND = "#D"
 
 fun translateStmt(stmt: Stmt?) : String{
     if(stmt == null) return SKIP
@@ -31,6 +34,12 @@ fun translateStmt(stmt: Stmt?) : String{
         is Block -> {
             return stmt.stmts.joinToString(" ") { translateStmt(it) }
         }
+        is AwaitStmt -> {
+            if(stmt.guard is DurationGuard) throw Exception("Translation not supported yet: $stmt")
+                val trans = translateGuard( stmt.guard)
+                return "{{?$PLACEHOLDERCHECK; $PLACEHOLDERANON; ?$PLACEHOLDERCOND; ?$trans;} ++ " +
+                        "{?!($PLACEHOLDERCHECK); $CONTRACTVARIABLE := 0; $PLACEHOLDERANON; ?$PLACEHOLDERCOND; ?$trans;}};"
+       }
         else -> {throw Exception("Translation not supported yet: $stmt")}
     }
 }

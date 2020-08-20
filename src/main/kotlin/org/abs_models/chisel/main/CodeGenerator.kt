@@ -22,6 +22,7 @@ open class CodeContainer{
                             extraFields : List<String> = emptyList(),
                             tactic : String = "expandAllDefs; master") : Boolean{
 
+
         val proof =
         """
         |Definitions
@@ -123,9 +124,12 @@ open class CodeContainer{
 
         val paramListDer = "${(fields+extraFields).joinToString(", ") { "Real $it" }}, ${(fields+extraFields).joinToString(", ") { "Real ${it}der" }}"
         val paramListCallSubst = "${(fields+extraFields).joinToString(", ") { it }}, ${(fields+extraFields).joinToString(", ") { "${it}'" }}"
+
         val extra =
             """
             |HP dynam ::= {$dynam};
+            |
+            |HP anon ::= {${fields.filter { it != CONTRACTVARIABLE }.joinToString (";",transform = {"$it := *" })+";"}};
             |
             |   Bool pre($paramListDer) <->
             |     (${newpre});
@@ -149,7 +153,11 @@ open class CodeContainer{
             |   ) 
             """.trimMargin()
 
-        return proofObligation(extra, prob, prog, path, file, extraFields, tactic)
+        var modProg = prog.replace(PLACEHOLDERCHECK,"([dynam;]cPost($paramListCallSubst))");
+        modProg = modProg.replace(PLACEHOLDERANON,"anon");
+        modProg = modProg.replace(PLACEHOLDERCOND,"cPost($paramListCallSubst)");
+
+        return proofObligation(extra, prob, modProg, path, file, extraFields, tactic)
     }
 
 
