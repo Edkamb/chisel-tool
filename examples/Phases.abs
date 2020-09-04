@@ -17,7 +17,7 @@ class Diode {
 	}
 
 
-	Unit run(){
+	{
 		this!ctrl1();
 	}
 

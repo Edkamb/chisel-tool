@@ -197,15 +197,15 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             RegionOption.UniformRegion -> {
                 val guards = call.map { extractInitial(find(it, cDecl)) }
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
-                val region = if (dGuards.isEmpty()) "false" else dGuards.joinToString("&")
-                " {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
+                val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
+                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
             }
             RegionOption.CtrlRegion -> {
                 val guards = call.map { extractInitial(find(it, cDecl)) }
                 val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
                 var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
-                region = "$region & (${getRegionString()})"
-                " {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
+                region = "$region & !(${getRegionString()})"
+                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
             }
         }
 }

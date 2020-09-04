@@ -9,7 +9,7 @@ class BBall {
         Real v = 0 : v' = -10;
     }
 
-    Unit run(){ this!ctrl(); }
+    { this!ctrl(); }
     Unit ctrl(){
         await x <= 0 & v < 0;
         v = -v*8/10;

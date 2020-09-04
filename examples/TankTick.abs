@@ -7,13 +7,13 @@ type Real = Rat;
 [HybridSpec: Requires("4 < inVal & inVal < 9")]
 class CSingleTank(Real inVal){
 
-[HybridSpec: ObjInv("3 < level & level < 10")]
+[HybridSpec: ObjInv("3 <= level & level <= 10")]
     physical{
         Real level = inVal : level' = drain;
         Real drain = -1/2  : drain' = 0;
     }
 
-    Unit run(){ this!ctrl(); }
+    { this!ctrl(); }
 
     Unit ctrl(){
         await duration(1,1);
