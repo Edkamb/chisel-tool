@@ -14,16 +14,17 @@ interface ITank {
 [HybridSpec: Requires("3 < inVal & inVal < 10")]
 class CSingleTank(Real inVal) implements ITank{
 
-[HybridSpec: ObjInv("3 < level & level < 10")]
+[HybridSpec: ObjInv("3 <= level & level <= 10")]
     physical{
         Real level = inVal : level' = drain;
         Real drain = -1/2 : drain' = 0;
     }
 
-    Unit run(){ this!ctrl(); }
+    { this!ctrl(); }
 
     Unit ctrl(){
-        await diff level <= 3 & drain <= 0 | level >= 10 & drain >= 0;
+        //await diff level <= 3 & drain <= 0 | level >= 10 & drain >= 0;
+        await diff level <= 3 | level >= 10;
         if(level <= 3)     drain =  1/2;
         else               drain = -1/2;
         this!ctrl();

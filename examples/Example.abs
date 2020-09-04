@@ -1,0 +1,38 @@
+module Examples;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String) | Tactic(String);
+type Real = Rat;
+
+class C{
+    [HybridSpec: ObjInv("x >= 0 & x <= 10")]
+    physical{
+        Real x = 0 : x' = 1;
+    }
+
+    { this!ctrl(); }
+
+    Unit ctrl(){
+        await diff x >= 10;
+        x = 0;
+        this!ctrl();
+    }
+
+    Unit s1(){
+        await diff x >= 1;
+        x = 0;
+    }
+    Unit s2(){
+        await diff x >= 2;
+        x = 0;
+    }
+
+    Real m(){
+        Fut<Unit> f = this!s1();
+        await f?;
+        x = x-x;
+        this!s2();
+        return 0;
+    }
+}
+
+{}

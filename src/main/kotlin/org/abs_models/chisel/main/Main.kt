@@ -149,7 +149,6 @@ fun proofObligationMethod(model: Model, path : String, regionOpt : RegionOption)
     else                return clazzCont.proofObligationMethod(metDecl)
 }
 
-
 fun proofObligationInit(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
     return clazzCont.proofObligationInitial()
@@ -185,12 +184,12 @@ fun proofObligationMainBlock(model: Model) : Boolean {
         System.err.println("Model contains no main block")
         exitProcess(-1)
     }
-    val prog = translateStmt(block)
-    val cc = CodeContainer()
+    val prog = extractBlock(block, false)
+    val cc = SimpleGenerator()
     val vars = collect(VarUse::class.java,block).map { it.name }
-    return cc.proofObligationPure("$CONTRACTVARIABLE = 1","$CONTRACTVARIABLE = 1", prog,"/tmp/chisel/main", "main.kyx",vars)
+    return cc.proofObligationPure("$CONTRACTVARIABLE = 1","$CONTRACTVARIABLE = 1", prog.first, prog.third.keys, "/tmp/chisel/main", "main.kyx",vars)
 }
 
-
+//TODO weak negation!!!
 
 fun main(args:Array<String>) = Main().main(args)

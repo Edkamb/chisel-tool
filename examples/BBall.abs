@@ -1,0 +1,20 @@
+module Ball;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String) | Tactic(String);
+type Real = Rat;
+
+class BBall {
+    physical{
+        Real x = 10 : x' = v;
+        Real v = 0 : v' = -10;
+    }
+
+    Unit run(){ this!ctrl(); }
+    Unit ctrl(){
+        await x <= 0 & v < 0;
+        v = -v*8/10;
+        this!ctrl();
+    }
+}
+
+{}

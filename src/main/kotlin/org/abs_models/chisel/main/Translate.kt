@@ -2,49 +2,124 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 
-const val SKIP = "skip;"
-const val PLACEHOLDERCHECK = "#C";
-const val PLACEHOLDERANON = "#A";
-const val PLACEHOLDERCOND = "#D"
+typealias PlaceMap = MutableMap<String, Pair<String, Set<MethodSig>>>
 
-fun translateStmt(stmt: Stmt?) : String{
-    if(stmt == null) return SKIP
+
+fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders: PlaceMap, skipFirst : Boolean = false)
+        : Pair<DlStmt,Set<MethodSig>>{
+    if(stmt == null) return Pair(DlSkip, called)
     when(stmt){
         is AssignStmt -> {
-            when(stmt.getChild(2)){
-                is PureExp ->
-                    return stmt.`var`.toString() + " := "+ translateExpr(stmt.getChild(2) as PureExp)+";"
-                else -> {throw Exception("Translation not supported yet : ${stmt.getChild(2)}")}
+            return when(stmt.getChild(2)){
+                is PureExp -> Pair(DlAssign(stmt.`var`.toString(),translateExpr(stmt.getChild(2) as PureExp))
+                                 , called)
+                else -> {
+                    val inner = translateSideExpr(stmt.getChild(2) as EffExp)
+                    val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
+                    Pair(DlSeq(inner.first, DlNonDetAssign(stmt.`var`.toString())), called + innerSet)
+                }
             }
         }
         is ReturnStmt -> {
-            return "$RESULTVARIABLE := ${translateExpr(stmt.retExp)};"
+            return  Pair(DlAssign(RESULTVARIABLE, translateExpr(stmt.retExp as PureExp)), called)
         }
         is IfStmt -> {
-            return "if(${translateExpr(stmt.condition)}) {${translateStmt(stmt.then)}} else {${translateStmt(stmt.`else`)}} "
+            val left = translateStmt(stmt.then, called, placeholders)
+            val right = translateStmt(stmt.`else`, called, placeholders)
+            val dlRet =
+                DlBlock(DlOr(DlSeq(DlCheck(translateExpr(stmt.condition)),left.first)
+                           , DlSeq(DlCheck("(!"+translateExpr(stmt.condition)+")"),right.first)))
+            return Pair(dlRet ,left.second.intersect(right.second))
         }
         is ExpressionStmt -> {
-            return if(stmt.exp is PureExp) SKIP
-                   else translateExpr(stmt.exp)
+            return if(stmt.exp is PureExp) Pair(DlSkip,called)
+                   else {
+                val inner = translateSideExpr(stmt.exp as EffExp)
+                val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
+                return Pair(inner.first, called + innerSet)
+            }
         }
         is VarDeclStmt -> {
-            return if(stmt.varDecl.initExp is PureExp) stmt.varDecl.name+" := "+translateExpr(stmt.varDecl.initExp as Exp)+";"
-            else "{"+translateExpr(stmt.varDecl.initExp as Exp) + "; "+stmt.varDecl.name+" := *;}"
+            return if(stmt.varDecl.initExp is PureExp) Pair(DlAssign(stmt.varDecl.name,translateExpr(stmt.varDecl.initExp as PureExp)),called)
+            else{
+                val inner = translateSideExpr(stmt.varDecl.initExp as EffExp)
+                val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
+                return Pair(DlSeq(inner.first,DlNonDetAssign(stmt.varDecl.name)), called + innerSet)
+            }
         }
         is Block -> {
-            return stmt.stmts.joinToString(" ") { translateStmt(it) }
+            val targetList = stmt.stmtsNoTransform.copy()
+            if(skipFirst) targetList.removeChild(0)
+            return targetList.fold(Pair(DlSkip as DlStmt,called), {
+                acc, nx
+                ->
+                val inner = translateStmt(nx, acc.second, placeholders)
+                Pair(DlSeq(acc.first, inner.first),inner.second)
+            })
         }
         is AwaitStmt -> {
             if(stmt.guard is DurationGuard) throw Exception("Translation not supported yet: $stmt")
-                val trans = translateGuard( stmt.guard)
-                return "{{?$PLACEHOLDERCHECK; $PLACEHOLDERANON; ?$PLACEHOLDERCOND; ?$trans;} ++ " +
-                        "{?!($PLACEHOLDERCHECK); $CONTRACTVARIABLE := 0; $PLACEHOLDERANON; ?$PLACEHOLDERCOND; ?$trans;}};"
+            val trans = translateGuard( stmt.guard)
+            val myName = getNewPlaceholderName()
+            placeholders[myName] = Pair(trans, called)
+
+            val dlRet = DlBlock(DlOr(
+                  DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck(trans))
+                , DlSeq(DlSeq(DlCheck("(!$myName)"),DlAnon),
+                        DlSeq(DlAssign(CONTRACTVARIABLE,"0"),DlCheck(trans)))
+            ))
+
+
+            return Pair(dlRet, emptySet())
        }
+        is DurationStmt -> { //todo: add me...
+            throw Exception("Translation not supported yet: $stmt")
+        }
         else -> {throw Exception("Translation not supported yet: $stmt")}
     }
 }
 
-fun translateExpr(exp: Exp) : String{
+fun translateSideExpr(exp : EffExp) : Pair<DlStmt,MethodSig?> {
+    when (exp) {
+        is AsyncCall -> {
+            val mSig = exp.methodSig
+
+            //the following does not check the precondition if there is none
+            val mSigOuter = findInterfaceDecl(mSig.contextMethod, mSig.contextDecl as ClassDecl)
+                ?: return if(exp.callee is ThisExp) Pair(DlSkip,mSig) else Pair(DlSkip,null)
+            var spec = extractSpec(mSigOuter, "Requires")
+
+            for (i in 0 until exp.numParam)
+                spec = spec.replace(mSigOuter.getParam(i).name, translateExpr(exp.getParam(i)))
+            val dlRet =
+                DlBlock(DlOr(DlSeq(DlCheck(spec),
+                                   DlSkip),
+                             DlSeq(DlCheck("(!$spec)"),
+                                   DlAssign(CONTRACTVARIABLE, "0"))))
+            return if(exp.callee is ThisExp) Pair(dlRet,mSig) else Pair(dlRet,null)
+        }
+        is NewExp -> {
+            val cDecl = findClass(exp.model, exp.className)
+            var spec = extractSpec(cDecl, "Requires")
+            for (i in 0 until cDecl.numParam)
+                spec = spec.replace(cDecl.getParam(i).name, translateExpr(exp.getParam(i)))
+            val dlRet =
+                DlBlock(DlOr(DlSeq(DlCheck(spec),
+                    DlSkip),
+                    DlSeq(DlCheck("(!$spec)"),
+                        DlAssign(CONTRACTVARIABLE, "0"))))
+            return Pair(dlRet,null)
+        }
+        is GetExp -> { //todo: add me...
+            throw Exception("Translation not supported yet: $exp")
+        }
+        else -> {
+            throw Exception("Translation not supported yet: $exp")
+        }
+    }
+}
+
+fun translateExpr(exp: PureExp) : String{
     when(exp) {
         is DivMultExp -> return "(${translateExpr(exp.left)}/${translateExpr(exp.right)})"
         is MultMultExp -> return "(${translateExpr(exp.left)}*${translateExpr(exp.right)})"
@@ -63,24 +138,8 @@ fun translateExpr(exp: Exp) : String{
         is MinusExp -> return "(-${translateExpr(exp.operand)})"
         is FieldUse -> return "$exp"
         is VarUse -> return "$exp"
-        is DiffOpExp -> return "${translateExpr(exp.getChild(0) as Exp)}'"
+        is DiffOpExp -> return "${translateExpr(exp.getChild(0) as PureExp)}'"
         is DifferentialExp -> return translateExpr(exp.left)+"="+translateExpr(exp.right)
-        is AsyncCall -> {
-            val mSig = exp.methodSig
-            val mSsig = findInterfaceDecl(mSig.contextMethod, mSig.contextDecl as ClassDecl) ?: return SKIP
-            var spec = extractSpec(mSsig,"Requires")
-
-            for(i in 0 until exp.numParam)
-                spec = spec.replace(mSsig.getParam(i).name, translateExpr(exp.getParam(i)))
-            return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
-        }
-        is NewExp -> {
-            val cDecl = findClass(exp.model, exp.className)
-            var spec = extractSpec(cDecl,"Requires")
-            for(i in 0 until cDecl.numParam)
-                spec = spec.replace(cDecl.getParam(i).name, translateExpr(exp.getParam(i)))
-            return "{{?($spec);skip;} ++ {?(!$spec);$CONTRACTVARIABLE := 0;}}"
-        }
         else -> {throw Exception("Translation not supported yet: $exp")}
     }
 }
@@ -102,3 +161,6 @@ fun translateGuard(exp: Guard?) : String{
 fun find(methodSig: MethodSig, classDecl: ClassDecl) : MethodImpl{
     return classDecl.methods.first { it.methodSig.matches(methodSig)}
 }
+
+private var counter = 0
+private fun getNewPlaceholderName() : String = "#PLACE${counter++}"

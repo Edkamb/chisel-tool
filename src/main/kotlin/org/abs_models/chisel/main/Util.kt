@@ -31,23 +31,3 @@ fun findInterfaceDecl(methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig?
         }
     return null
 }
-
-fun collectMustHaveCalled(stmt : Stmt, collect : Set<Call>) : Set<Call> {
-    when (stmt) {
-        is Block -> {
-            return stmt.stmts.fold(collect, {it, nx -> it + collectMustHaveCalled(nx, it)})
-        }
-        is WhileStmt -> {
-            return emptySet()
-        }
-        is AwaitStmt -> { //just to be sure
-            return emptySet()
-        }
-        is IfStmt -> {
-            val tColl = collectMustHaveCalled(stmt.then, collect)
-            val eColl = if(stmt.`else` == null) emptySet() else collectMustHaveCalled(stmt.`else`, collect)
-            return tColl.intersect(eColl)
-        }
-        else -> return collect + collect(Call::class.java, stmt)
-    }
-}
