@@ -1,0 +1,28 @@
+module Demo;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
+
+type Real = Rat;
+
+interface IElement {
+    Unit inBound(Real nB);
+    [HybridSpec: Requires("nR > 0 & nR < 1")]
+    Unit inRate(Real nR);
+    [HybridSpec: Ensures("0 < result")]
+    Real outV();
+}
+
+[HybridSpec: Requires("inV > 0 & inB > inV & inR < 1 & inR > 0")]
+[HybridSpec: ObjInv("v > 0 & bnd > v & rate < 1 & rate > 0")]
+class Element(Real inV, Real inR, Real inB) implements IElement{
+    physical{
+        Real rate = inR : rate' = 0;
+        Real bnd = inB : bnd' = 0;
+        Real v = inV : v' = rate*(bnd-v);
+    }
+    Unit inBound(Real nB){ if(nB >= bnd) bnd = nB; }
+    Unit inRate(Real nR){ this.rate = nR; }
+    Real outV(){ return this.v; }
+}
+
+{}

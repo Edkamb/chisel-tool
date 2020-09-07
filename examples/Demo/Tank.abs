@@ -1,0 +1,80 @@
+module Demo;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
+
+type Real = Rat;
+
+interface Log { Unit triggered(); }
+class DummyLog implements Log{ Unit triggered(){ skip; } }
+
+[HybridSpec: Requires("3 <= inVal & inVal <= 10")]
+class CTank(Log log, Real inVal){
+
+[HybridSpec: ObjInv("3 <= level & level <= 10")]
+    physical{
+        Real level = inVal : level' = drain;
+        Real drain = -1 : drain' = 0;
+    }
+
+    { this!up(); this!down(); }
+
+    Unit down(){
+        await diff level <= 3 & drain <= 0;
+        drain = 1;
+        log!triggered();
+        this!down();
+    }
+
+    Unit up(){
+        await diff level >= 10 & drain >= 0;
+        drain = -1;
+        log!triggered();
+        this!up();
+    }
+}
+
+
+[HybridSpec: Requires("3 <= inVal & inVal <= 10")]
+class LTank(Real inVal){
+
+[HybridSpec: ObjInv("3 <= level & level <= 10")]
+    physical{
+        Real level = inVal : level' = drain;
+        Real drain = -1 : drain' = 0;
+    }
+
+    { this!down(); }
+
+    Unit down(){
+        await diff level <= 3 & drain <= 0;
+        drain = 1;
+        this!up();
+    }
+
+    Unit up(){
+        await diff level >= 10 & drain >= 0;
+        drain = -1;
+        this!down();
+    }
+}
+
+[HybridSpec: Requires("7/2 <= inVal & inVal <= 19/2")]
+class TTank(Real inVal){
+
+[HybridSpec: ObjInv("3 <= level & level <= 10")]
+    physical{
+        Real level = inVal : level' = drain;
+        Real drain = -1/2  : drain' = 0;
+    }
+
+    { this!ctrl(); }
+
+    Unit ctrl(){
+        await duration(1/2,1/2);
+        if(level <= 7/2) drain =  1/2;
+        if(level >= 19/2) drain = -1/2;
+        this!ctrl();
+    }
+}
+
+{}

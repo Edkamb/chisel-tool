@@ -85,7 +85,7 @@ fun translateSideExpr(exp : EffExp) : Pair<DlStmt,MethodSig?> {
             val mSig = exp.methodSig
 
             //the following does not check the precondition if there is none
-            val mSigOuter = findInterfaceDecl(mSig.contextMethod, mSig.contextDecl as ClassDecl)
+            val mSigOuter = findInterfaceDecl(mSig)
                 ?: return if(exp.callee is ThisExp) Pair(DlSkip,mSig) else Pair(DlSkip,null)
             var spec = extractSpec(mSigOuter, "Requires")
 

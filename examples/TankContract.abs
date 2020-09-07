@@ -1,6 +1,6 @@
 module NTank;
 
-data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String);
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
 
 type Real = Rat;
 

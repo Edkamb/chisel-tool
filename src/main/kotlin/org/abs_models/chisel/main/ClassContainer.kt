@@ -80,6 +80,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         if(runSig != null)
             transRet = Triple(transRet.first, transRet.second + runSig, transRet.third )
 
+        val tactic = extractSpec(cDecl,"Tactic", default = "expandAllDefs; master", multipleAllowed = false)
         val res =
         proofObligationNew(
             "$CONTRACTVARIABLE = 1",
@@ -90,7 +91,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             "/tmp/chisel/$name",
             "init.kyx",
             emptyList(),
-            "expandAllDefs; master")
+            tactic)
         output("Inital proof obligation result: \n$res\n", Verbosity.V)
         return res
     }
@@ -99,7 +100,9 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
         val mayCall  = collect(Call::class.java, mDecl)
         val create  = collect(NewExp::class.java, mDecl)
-        if(read.isEmpty() && mayCall.isEmpty() && create.isEmpty() && extractSpec(mDecl,"Ensures") == "true"){
+        val specDecl = findInterfaceDecl(mDecl.methodSig)
+        val sPec =  if(specDecl == null) "true" else extractSpec(specDecl,"Ensures")
+        if(read.isEmpty() && mayCall.isEmpty() && create.isEmpty() && sPec == "true"){
             output("Skipping ${mDecl.methodSig.name} because it does not write into the heap, makes no calls, creates no objects and has no Ensures specification")
             return true
         }
@@ -115,7 +118,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         val post = "$CONTRACTVARIABLE = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
 
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }
-        val tactic = extractSpec(mDecl,"Tactic", default = "expandAllDefs; master")
+        val tactic = extractSpec(mDecl,"Tactic", default = "expandAllDefs; master", multipleAllowed = false)
         val res = proofObligationNew(
             post,
             transRet,
@@ -214,14 +217,14 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : String, default:String = "true", multipleAllowed:Boolean = true) : String {
     var ret : String = default
     for (annotation in decl.nodeAnnotations) {
-        if(!annotation.type.toString().endsWith(".HybridSpec")) continue
-        if(annotation.getChild(0) !is DataConstructorExp) {
+        if (!annotation.type.toString().endsWith(".HybridSpec")) continue
+        if (annotation.getChild(0) !is DataConstructorExp) {
             throw Exception("Could not extract any specification $expectedSpec from $decl because of the expected value")
         }
         val annotated = annotation.getChild(0) as DataConstructorExp
-        if(annotated.constructor != expectedSpec) continue
+        if (annotated.constructor != expectedSpec) continue
         val next = (annotated.getParam(0) as StringLiteral).content
-        if (!multipleAllowed) break
+    if (!multipleAllowed) { ret = next; break }
         ret = "(($ret) & ($next))"
     }
     return ret

@@ -1,6 +1,6 @@
 module Demo;
 
-data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | TimedRequires(String) | Tactic(String);
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
 
 type Real = Rat;
 

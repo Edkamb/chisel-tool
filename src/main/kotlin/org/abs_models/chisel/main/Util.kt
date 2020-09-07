@@ -23,6 +23,12 @@ fun findClass(model: Model, inName : String) : ClassDecl {
     throw Exception("cannot find class $inName to extract its creation condition")
 }
 
+fun findInterfaceDecl(methodSig: MethodSig) : MethodSig? {
+    if(methodSig.contextMethod == null || methodSig.contextDecl == null || methodSig.contextDecl !is ClassDecl) return null
+    val classDecl = methodSig.contextDecl as ClassDecl
+    return findInterfaceDecl(methodSig.contextMethod , classDecl)
+}
+
 fun findInterfaceDecl(methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig? {
        for( iDecl in classDecl.implementedInterfaceUseList.map { it.decl as InterfaceDecl }){
             for( mDecl in iDecl.allMethodSigs){

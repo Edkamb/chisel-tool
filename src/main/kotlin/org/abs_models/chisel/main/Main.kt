@@ -127,6 +127,10 @@ class Main : CliktCommand() {
                 output("verification result for main block: $res")
                 for(mDecl in model.moduleDecls.filter { !it.name.startsWith("ABS.") }){
                     for(cDecl in mDecl.decls.filterIsInstance<ClassDecl>()){
+                        if(!cDecl.hasPhysical()) {
+                            output("skipping ${mDecl.name+"."+cDecl.name} because it is not a physical class, please use Crowbar")
+                            continue
+                        }
                         res = res && proofObligationsClass(model, mDecl.name+"."+cDecl.name,regionOpt)
                         output("verification result for ${mDecl.name+"."+cDecl.name}: $res")
                     }
@@ -137,7 +141,7 @@ class Main : CliktCommand() {
             }
         }
 
-        output("done: final result $res")
+        output("final result: $res")
     }
 }
 
@@ -171,7 +175,7 @@ fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassC
             if(cDecl.hasPhysical()) {
                 return ClassContainer(cDecl, regionOpt)
             }
-            else throw Exception("non-physical classes not supported, please use Crowbar instead")
+            else throw Exception("non-physical classes are not supported by Chisel, please use Crowbar instead")
         }
         else throw Exception("class not found")
     }
