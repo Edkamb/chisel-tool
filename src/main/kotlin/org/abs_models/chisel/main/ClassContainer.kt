@@ -174,8 +174,8 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         val awaitSet  = collect(AwaitStmt::class.java, mDecl)
         val getSet  = collect(GetExp::class.java, mDecl)
         val durationSet  = collect(DurationStmt::class.java, mDecl)
-        if(awaitSet.isNotEmpty() || getSet.isNotEmpty() || durationSet.isNotEmpty() ){
-            println("method ${mDecl.methodSig.name} contains statements that are not yet supported for locally Zeno analysis (get, duration, await)")
+        if((awaitSet.size >= 2 || (awaitSet.size == 1 && mDecl.block.getStmt(0) !is AwaitStmt))  || getSet.isNotEmpty() || durationSet.isNotEmpty() ){
+            println("method ${mDecl.methodSig.name} contains statements that are not yet supported for locally Zeno analysis (get, duration, internal await)")
         }
         val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
         val pre = "$inv & $CONTRACTVARIABLE = 1 & $TIMEVARIABLE = 0 & "+if(mSig != null){
