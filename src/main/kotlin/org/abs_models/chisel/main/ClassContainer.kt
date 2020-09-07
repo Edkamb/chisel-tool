@@ -37,7 +37,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
     }
 
     private fun getRegionString(connector: String = " | "): String {
-        if (ctrlRegions.isEmpty()) return "true"
+        if (ctrlRegions.isEmpty()) return "false"
         return ctrlRegions.joinToString(connector) { "($it)" }
     }
 

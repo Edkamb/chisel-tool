@@ -99,7 +99,7 @@ open class CodeContainer{
             |   ](post($paramListCallSubst)) 
             """.trimMargin()
 
-        return proofObligation(extra, prob, path, file, extraFields, tactic)
+        return proofObligation(extra, prob, path, file, fields+extraFields, tactic)
     }
 
 
@@ -117,7 +117,7 @@ open class CodeContainer{
     ) : Boolean {
 
         //Abstract parameters
-        var newpre = pre
+        var newpre = "$pre & $inv"
         var newdPost = dPost
         fields.forEach {
             newpre = newpre.replace("$it'","${it}der")

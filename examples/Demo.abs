@@ -11,12 +11,25 @@ class C {
     		Real x =  5: x' = v;
     		Real v = -1: v' = 0;
     	}
+
+    Unit m0(){ skip; }
     Unit m(){
+        await diff x >= 0;
+        v = 1;
+        Fut<Unit> f = this!m(); //change to m0 to fail
+        f.get;
+        v = -1;
+    }
+
+    Unit m2(){
         await diff x >= 0;
         v = 1;
         Fut<Unit> f = this!m();
         f.get;
+        x = 4;
         v = -1;
+        await duration(1,1);
+        v = 1;
     }
 }
 

@@ -13,8 +13,9 @@ interface IElement {
 }
 
 [HybridSpec: Requires("inV > 0 & inB > inV & inR < 1 & inR > 0")]
-[HybridSpec: ObjInv("v > 0 & bnd > v & rate < 1 & rate > 0")]
 class Element(Real inV, Real inR, Real inB) implements IElement{
+
+[HybridSpec: ObjInv("v > 0 & bnd > v & rate < 1 & rate > 0")]
     physical{
         Real rate = inR : rate' = 0;
         Real bnd = inB : bnd' = 0;

@@ -62,7 +62,18 @@ fun translateStmt(stmt: Stmt?,
             })
         }
         is AwaitStmt -> {
-            if(stmt.guard is DurationGuard) throw Exception("Translation not supported yet: $stmt")
+            if(stmt.guard is DurationGuard)  {
+                val trans = translateExpr( (stmt.guard as DurationGuard).min )
+                val myName = getNewPlaceholderName()
+                placeholders[myName] = Triple("$TIMEVARIABLE <= $trans", called, false)
+
+                val dlRet = DlBlock(DlOr(
+                    DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck("($inv)"))
+                    , DlSeq(DlSeq(DlCheck("(!$myName)"),DlAnon),
+                        DlAssign(CONTRACTVARIABLE,"0"))
+                ))
+                return Pair(dlRet, emptySet())
+            }
             val trans = translateGuard( stmt.guard)
             val myName = getNewPlaceholderName()
             placeholders[myName] = Triple(trans, called, false)
@@ -76,8 +87,17 @@ fun translateStmt(stmt: Stmt?,
 
             return Pair(dlRet, emptySet())
        }
-        is DurationStmt -> { //todo: add me...
-            throw Exception("Translation not supported yet: $stmt")
+        is DurationStmt -> { //todo: duration statement should non anonymize, but exactly compute its new state
+            val trans = translateExpr( stmt.min )
+            val myName = getNewPlaceholderName()
+            placeholders[myName] = Triple("$TIMEVARIABLE <= $trans", called, false)
+
+            val dlRet = DlBlock(DlOr(
+                DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck("($inv)"))
+                , DlSeq(DlSeq(DlCheck("(!$myName)"),DlAnon),
+                    DlAssign(CONTRACTVARIABLE,"0"))
+            ))
+            return Pair(dlRet, emptySet())
         }
         else -> {throw Exception("Translation not supported yet: $stmt")}
     }
