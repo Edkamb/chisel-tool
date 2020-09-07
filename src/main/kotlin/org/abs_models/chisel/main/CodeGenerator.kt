@@ -199,13 +199,8 @@ abstract class CodeContainer{
         return false
     }
 
-
-
-
-
-
     /* https://stackoverflow.com/questions/35421699 */
-    private fun String.runCommand(
+    protected fun String.runCommand(
         workingDir: File = File("."),
         timeoutAmount: Long = 60,
         timeoutUnit: TimeUnit = TimeUnit.SECONDS

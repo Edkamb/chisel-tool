@@ -164,7 +164,7 @@ fun proofObligationsClass(model: Model, path : String, regionOpt : RegionOption)
 }
 fun proofObligationZenoClass(model: Model, path : String, regionOpt : RegionOption) : Boolean {
     val clazzCont = getContainer(model, path, regionOpt)
-    return clazzCont.proofObligationZeno()
+    return clazzCont.proofObligationsAllZeno()
 }
 
 fun getContainer(model: Model, path : String, regionOpt : RegionOption) : ClassContainer{

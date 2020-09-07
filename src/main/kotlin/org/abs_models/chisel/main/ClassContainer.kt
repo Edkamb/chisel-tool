@@ -1,6 +1,7 @@
 package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
+import java.io.File
 
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
@@ -115,7 +116,7 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
         val init = translateGuard(extractInitial(mDecl))
         val transRet  = extractImpl(mDecl)
-        val post = "$CONTRACTVARIABLE = 1 & $inv & ${extractSpec(mDecl,"Ensures")}"
+        val post = "$CONTRACTVARIABLE = 1 & $inv & $sPec"
 
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }
         val tactic = extractSpec(mDecl,"Tactic", default = "expandAllDefs; master", multipleAllowed = false)
@@ -140,45 +141,40 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
     }
 
     //TODO: add check for subset from the paper
-    //TODO: split for several methods
-    fun proofObligationZeno() : Boolean {
-       // if(!isControllable()) return false
-        for ( mDecl in cDecl.methods ) {
-            if(mDecl.methodSig.name =="run") continue
-            if(isController(mDecl)) continue
-            val read  = collect(AssignStmt::class.java, mDecl).filter { it.`var` is FieldUse }
-            val create  = collect(NewExp::class.java, mDecl)
-            if(read.isNotEmpty() || create.isNotEmpty()) return false
-        }
-        val obls = mutableListOf<String>()
-        val extraFields = mutableListOf<String>()
-        for ( mDecl in cDecl.methods ) {
-            if(mDecl.methodSig.name =="run") continue
-            if(!isController(mDecl)) continue
+    fun proofObligationZeno(mDecl : MethodImpl) : Boolean {
+        //if()//check locally Zeno checked fragment
+        val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
+        val pre = "$inv & $CONTRACTVARIABLE = 1 & $TIMEVARIABLE = 0 & "+if(mSig != null){
+            extractSpec(mSig,"Requires")
+        } else "true"
 
-            val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
-            val pre = "$inv & $CONTRACTVARIABLE = 1 & "+if(mSig != null){
-                extractSpec(mSig,"Requires")
-            } else "true"
-            val init = translateGuard(extractInitial(mDecl))
-            val impl  = extractImpl(mDecl)
-            val post = "!(${getRegionString("|")})"
-            val dynamics = "$TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $TIMEVARIABLE <= $ZENOLIMITVARIABLE}" //?$TIMEVARIABLE >= $ZENOLIMITVARIABLE;"
-            extraFields +=  collect(VarUse::class.java,mDecl).map { it.name }
-            val res = "(($pre & $init & $inv) -> [$impl$dynamics]$post)"
-            println(res)
-            obls.add(res)
+        val init = translateGuard(extractInitial(mDecl))
+        val transRet  = extractImpl(mDecl)
 
-        }
-
-        //todo: reactivate
-        return false
-        /*proofObligation(
-            "",
-            "\\exists $ZENOLIMITVARIABLE ($ZENOLIMITVARIABLE > 0 & ${obls.joinToString ("&")})",
-            "?true;",
+        val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }
+        val tactic = extractSpec(mDecl,"Tactic", default = "expandAllDefs; master", multipleAllowed = false)
+        val res = proofObligationZenoNew(
+            transRet,
+            init,
+            inv,
+            pre,
             "/tmp/chisel/$name",
-            "zeno.kyx",extraFields, "expandAllDefs; master")*/
+            "${mDecl.methodSig.name}.kyx",
+            extraFields,
+            tactic)
+        output("Method proof obligation for locally Zeno behavior of ${mDecl.methodSig.name}:\n$res\n", Verbosity.V)
+        return res
+    }
+
+
+    fun proofObligationsAllZeno() : Boolean{
+        var res = true
+        for(mDecl in cDecl.methods){
+            val next =  proofObligationZeno(mDecl)
+            output("verification result for locally Zeno behavior of ${cDecl.name +"."+mDecl.methodSig.name}: $next")
+            res = res && next
+        }
+        return res
     }
 
     fun proofObligationsAll() : Boolean{
@@ -190,6 +186,90 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             res = res && next
         }
         return res
+    }
+
+    fun proofObligationZenoNew(
+        transRet: Triple<DlStmt, Set<MethodSig>, PlaceMap>,
+        init: String,
+        inv: String,
+        pre: String,
+        path: String,
+        file: String,
+        extraFields: List<String> = emptyList(),
+        tactic: String = "expandAllDefs; master"
+    ) : Boolean {
+
+        //Abstract parameters
+        var newpre = "$pre & $init & $inv"
+        fields.forEach {
+            newpre = newpre.replace("$it'","${it}der")
+        }
+        val paramListDer = "${(fields+extraFields).joinToString(", ") { "Real $it" }}, ${(fields+extraFields).joinToString(", ") { "Real ${it}der" }}"
+        val paramListCallSubst = "${(fields+extraFields).joinToString(", ") { it }}, ${(fields+extraFields).joinToString(", ") { "${it}'" }}"
+
+        val progDefs =
+            listOf(Pair("anon", fields.filter { it != CONTRACTVARIABLE }.joinToString (";",transform = {"$it := *" })+";"),
+                Pair("skip", "?true;"))
+
+
+        val predDefs =
+            listOf(Pair("pre", newpre))
+
+
+        var prog = transRet.first.prettyPrint(2)
+        for(entry in transRet.third){
+            prog = prog.replace(entry.key,"([${regionFor(entry.value.first, entry.value.second)}]$inv)")
+        }
+
+
+        val prob =
+            """
+            |pre($paramListCallSubst)
+            |   -> 
+            |   \exists $ZENOLIMITVARIABLE ( $ZENOLIMITVARIABLE > 0 & (
+            |   [
+            |   ?$init;
+            |   $prog
+            |   $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $TIMEVARIABLE <= $ZENOLIMITVARIABLE}
+            |   ]
+            |   (
+            |   !(${getRegionString("|")})
+            |   ) ))
+            """.trimMargin()
+
+        val proof =
+            """
+        |Definitions
+        |${progDefs.joinToString("\n") { "\tHP ${it.first} ::= {${it.second}};" }}
+        |${predDefs.joinToString("\n") { "\tBool ${it.first}($paramListDer) <-> (${it.second});" }}
+        |End.
+        |ProgramVariables
+        |    ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
+        |End.
+        |Problem
+        |    $prob
+        |End.
+        |Tactic "default"
+        |    $tactic
+        |End.
+        """.trimMargin()
+
+
+        val f = File(path)
+        f.mkdirs()
+        File("$path/$file").writeText(proof)
+        if(keymaeraPath != "") {
+            val res = "java -jar $keymaeraPath -prove $path/$file".runCommand()
+            if(res != null) {
+                val answer = res.split("\n")
+                output("starting keymaera x: java -jar $keymaeraPath -prove $path/$file")
+                return answer[answer.size-2].startsWith("PROVED")
+            }
+        } else {
+            output(proof)
+        }
+
+        return false
     }
 
     override fun regionFor(extra : String, call : Set<MethodSig>) : String =
