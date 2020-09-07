@@ -37,3 +37,51 @@ fun findInterfaceDecl(methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig?
         }
     return null
 }
+
+fun extractBlock(block: Block, skipFirst : Boolean) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
+    val map : PlaceMap = mutableMapOf()
+    val trans = translateStmt(block, emptySet(), map, skipFirst)
+    return Triple(trans.first, trans.second, map)
+}
+
+fun extractImpl(mImpl: MethodImpl) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
+    return extractBlock(
+        mImpl.block,
+        extractInitial(mImpl) != null
+    )
+}
+
+fun extractInitial(mImpl : MethodImpl) : Guard?{
+    val lead = mImpl.block.getStmt(0)
+    return if(lead is AwaitStmt && (lead.guard is DifferentialGuard || lead.guard is DurationGuard)){
+        lead.guard
+    }else null
+}
+
+fun extractPhysical(physicalImpl: PhysicalImpl) : String{
+    return physicalImpl.fields.joinToString(", ") {
+        val exp = it.initExp as DifferentialExp
+        if(exp.left is DiffOpExp){
+            translateExpr(exp.left) + " =" + translateExpr(
+                exp.right
+            )
+        } else throw Exception("Only ODEs are supported for translation to KeYmaera X, LHS found: ${exp.left}")
+    }
+
+}
+
+fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : String, default:String = "true", multipleAllowed:Boolean = true) : String {
+    var ret : String = default
+    for (annotation in decl.nodeAnnotations) {
+        if (!annotation.type.toString().endsWith(".HybridSpec")) continue
+        if (annotation.getChild(0) !is DataConstructorExp) {
+            throw Exception("Could not extract any specification $expectedSpec from $decl because of the expected value")
+        }
+        val annotated = annotation.getChild(0) as DataConstructorExp
+        if (annotated.constructor != expectedSpec) continue
+        val next = (annotated.getParam(0) as StringLiteral).content
+    if (!multipleAllowed) { ret = next; break }
+        ret = "(($ret) & ($next))"
+    }
+    return ret
+}

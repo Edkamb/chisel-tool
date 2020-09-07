@@ -189,9 +189,9 @@ fun proofObligationMainBlock(model: Model) : Boolean {
         exitProcess(-1)
     }
     val prog = extractBlock(block, false)
-    val cc = SimpleGenerator()
+    val cc = CodeContainer()
     val vars = collect(VarUse::class.java,block).map { it.name }
-    return cc.proofObligationPure("$CONTRACTVARIABLE = 1","$CONTRACTVARIABLE = 1", prog.first, prog.third.keys, "/tmp/chisel/main", "main.kyx",vars)
+    return cc.proofObligationMain("$CONTRACTVARIABLE = 1","$CONTRACTVARIABLE = 1", prog.first, prog.third.keys, "/tmp/chisel/main", "main.kyx",vars)
 }
 
 //TODO weak negation!!!

@@ -7,21 +7,21 @@ import java.util.concurrent.TimeUnit
 /**
  * Manages some piece of code that generates proof obligations, i.e., a class or the main block
  */
-abstract class CodeContainer{
+open class CodeContainer{
     protected var fields : MutableSet<String> = mutableSetOf(
         CONTRACTVARIABLE,
         RESULTVARIABLE,
         TIMEVARIABLE
     )
 
-    abstract fun regionFor(extra : String, call : Set<MethodSig>) : String
+    open fun regionFor(extra : String, call : Set<MethodSig>) : String= "true"
 
 
-    private fun proofObligation(extraDefs: String,
+    protected fun proofObligation(extraDefs: String,
                             prob: String,
                             path : String,
                             file : String,
-                            extraFields : List<String> = emptyList(),
+                            vars : Collection<String> = emptySet(),
                             tactic : String = "expandAllDefs; master") : Boolean{
 
 
@@ -33,7 +33,7 @@ abstract class CodeContainer{
         |    
         |End.
         |ProgramVariables
-        |    ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
+        |    ${(vars).joinToString(" ") { "Real $it;" }}
         |End.
         |Problem
         |    $prob
@@ -63,14 +63,13 @@ abstract class CodeContainer{
     }
 
 
-    /* use this if obl contains no ODE*/
-    fun proofObligationPure(obl: String,
-                        pre: String,
-                        prog : DlStmt,
-                        placeholders : Set<String>,
-                        path : String,
-                        file : String,
-                        extraFields : List<String> = emptyList(), tactic: String = "expandAllDefs; master") : Boolean{
+    fun proofObligationMain(obl: String,
+                            pre: String,
+                            prog : DlStmt,
+                            placeholders : Set<String>,
+                            path : String,
+                            file : String,
+                            extraFields : List<String> = emptyList(), tactic: String = "expandAllDefs; master") : Boolean{
         var newpre = pre
         var newobl = obl
         fields.forEach { newpre = newpre.replace("$it'","${it}der"); newobl = newobl.replace("$it'","${it}der"); }
@@ -164,43 +163,17 @@ abstract class CodeContainer{
             |   ) 
             """.trimMargin()
 
-        val proof =
-        """
-        |Definitions
+        val defs = """
         |${progDefs.joinToString("\n") { "\tHP ${it.first} ::= {${it.second}};" }}
         |${predDefs.joinToString("\n") { "\tBool ${it.first}($paramListDer) <-> (${it.second});" }}
-        |End.
-        |ProgramVariables
-        |    ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
-        |End.
-        |Problem
-        |    $prob
-        |End.
-        |Tactic "default"
-        |    $tactic
-        |End.
         """.trimMargin()
 
 
-        val f = File(path)
-        f.mkdirs()
-        File("$path/$file").writeText(proof)
-        if(keymaeraPath != "") {
-            val res = "java -jar $keymaeraPath -prove $path/$file".runCommand()
-            if(res != null) {
-                val answer = res.split("\n")
-                output("starting keymaera x: java -jar $keymaeraPath -prove $path/$file")
-                return answer[answer.size-2].startsWith("PROVED")
-            }
-        } else {
-            output(proof)
-        }
-
-        return false
+        return proofObligation(defs, prob, path, file, fields+extraFields, tactic)
     }
 
     /* https://stackoverflow.com/questions/35421699 */
-    protected fun String.runCommand(
+    private fun String.runCommand(
         workingDir: File = File("."),
         timeoutAmount: Long = 60,
         timeoutUnit: TimeUnit = TimeUnit.SECONDS
@@ -216,8 +189,4 @@ abstract class CodeContainer{
         null
     }
 
-}
-
-class SimpleGenerator  : CodeContainer(){
-    override fun regionFor(extra: String, call: Set<MethodSig>): String = "true"
 }

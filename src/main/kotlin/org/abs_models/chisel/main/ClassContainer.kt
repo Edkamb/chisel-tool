@@ -1,17 +1,14 @@
 package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
-import java.io.File
 
 const val CONTRACTVARIABLE = "contract"
 const val RESULTVARIABLE = "result"
 const val TIMEVARIABLE = "tv"
 const val ZENOLIMITVARIABLE = "zlimitvar"
 
-/**
- * reg is variable because we may fall back to uniform regions if the class is not controllable
- */
-class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : CodeContainer(){
+//manages the proof obligations for a certain class
+class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
     private val name : String = cDecl.name
 
     //these are unprocessed user inputs
@@ -39,6 +36,11 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         return translateGuard(init)
     }
 
+    private fun getRegionString(connector : String = " | ") : String {
+        if(ctrlRegions.isEmpty()) return "true"
+        return ctrlRegions.joinToString(connector) { "($it)" }
+    }
+
     /**
      *  Checks whether the method is a controller method:
      *   - is called from init block
@@ -64,6 +66,31 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         return false
     }
 
+
+    override fun regionFor(extra : String, call : Set<MethodSig>) : String =
+        when(reg) {
+            RegionOption.BasicRegion -> {
+                "{$trPh & true}"
+            }
+            RegionOption.UniformRegion -> {
+                val guards = call.map { extractInitial(find(it, cDecl)) }
+                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
+                val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
+                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
+            }
+            RegionOption.CtrlRegion -> {
+                val guards = call.map { extractInitial(find(it, cDecl)) }
+                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
+                var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
+                region = "$region & !(${getRegionString()})"
+                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
+            }
+        }
+
+
+    /**
+     * These functions collect the information for the proof obligations
+     */
     fun proofObligationInitial() : Boolean{
         var equalities = "$CONTRACTVARIABLE = 1"
         for(fDecl in cDecl.fields ){
@@ -135,14 +162,15 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
 
     }
 
-    private fun getRegionString(connector : String = " | ") : String {
-        if(ctrlRegions.isEmpty()) return "true"
-        return ctrlRegions.joinToString(connector) { "($it)" }
-    }
 
-    //TODO: add check for subset from the paper
-    fun proofObligationZeno(mDecl : MethodImpl) : Boolean {
-        //if()//check locally Zeno checked fragment
+    private fun proofObligationZeno(mDecl : MethodImpl) : Boolean {
+
+        val awaitSet  = collect(AwaitStmt::class.java, mDecl)
+        val getSet  = collect(GetExp::class.java, mDecl)
+        val durationSet  = collect(DurationStmt::class.java, mDecl)
+        if(awaitSet.isNotEmpty() || getSet.isNotEmpty() || durationSet.isNotEmpty() ){
+            println("method ${mDecl.methodSig.name} contains statements that are not yet supported for locally Zeno analysis (get, duration, await)")
+        }
         val mSig = findInterfaceDecl(mDecl, mDecl.contextDecl as ClassDecl)
         val pre = "$inv & $CONTRACTVARIABLE = 1 & $TIMEVARIABLE = 0 & "+if(mSig != null){
             extractSpec(mSig,"Requires")
@@ -166,7 +194,9 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         return res
     }
 
-
+    /**
+     * methods for class-wide proofs
+     */
     fun proofObligationsAllZeno() : Boolean{
         var res = true
         for(mDecl in cDecl.methods){
@@ -188,7 +218,10 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
         return res
     }
 
-    fun proofObligationZenoNew(
+    /**
+     * builds the actual kyx file for Zeno proofs
+     */
+    private fun proofObligationZenoNew(
         transRet: Triple<DlStmt, Set<MethodSig>, PlaceMap>,
         init: String,
         inv: String,
@@ -237,105 +270,15 @@ class ClassContainer(val cDecl : ClassDecl, private var reg : RegionOption) : Co
             |   ) ))
             """.trimMargin()
 
-        val proof =
+        val defs =
             """
-        |Definitions
         |${progDefs.joinToString("\n") { "\tHP ${it.first} ::= {${it.second}};" }}
         |${predDefs.joinToString("\n") { "\tBool ${it.first}($paramListDer) <-> (${it.second});" }}
-        |End.
-        |ProgramVariables
-        |    ${(fields+extraFields).joinToString(" ") { "Real $it;" }}
-        |End.
-        |Problem
-        |    $prob
-        |End.
-        |Tactic "default"
-        |    $tactic
-        |End.
         """.trimMargin()
 
-
-        val f = File(path)
-        f.mkdirs()
-        File("$path/$file").writeText(proof)
-        if(keymaeraPath != "") {
-            val res = "java -jar $keymaeraPath -prove $path/$file".runCommand()
-            if(res != null) {
-                val answer = res.split("\n")
-                output("starting keymaera x: java -jar $keymaeraPath -prove $path/$file")
-                return answer[answer.size-2].startsWith("PROVED")
-            }
-        } else {
-            output(proof)
-        }
-
-        return false
-    }
-
-    override fun regionFor(extra : String, call : Set<MethodSig>) : String =
-        when(reg) {
-            RegionOption.BasicRegion -> {
-                "{$trPh & true}"
-            }
-            RegionOption.UniformRegion -> {
-                val guards = call.map { extractInitial(find(it, cDecl)) }
-                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
-                val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
-                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
-            }
-            RegionOption.CtrlRegion -> {
-                val guards = call.map { extractInitial(find(it, cDecl)) }
-                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
-                var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
-                region = "$region & !(${getRegionString()})"
-                " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
-            }
-        }
-}
-
-
-fun<T : ASTNode<out ASTNode<*>>?> extractSpec(decl : ASTNode<T>, expectedSpec : String, default:String = "true", multipleAllowed:Boolean = true) : String {
-    var ret : String = default
-    for (annotation in decl.nodeAnnotations) {
-        if (!annotation.type.toString().endsWith(".HybridSpec")) continue
-        if (annotation.getChild(0) !is DataConstructorExp) {
-            throw Exception("Could not extract any specification $expectedSpec from $decl because of the expected value")
-        }
-        val annotated = annotation.getChild(0) as DataConstructorExp
-        if (annotated.constructor != expectedSpec) continue
-        val next = (annotated.getParam(0) as StringLiteral).content
-    if (!multipleAllowed) { ret = next; break }
-        ret = "(($ret) & ($next))"
-    }
-    return ret
-}
-
-fun extractPhysical(physicalImpl: PhysicalImpl) : String{
-    return physicalImpl.fields.joinToString(", ") {
-        val exp = it.initExp as DifferentialExp
-        if(exp.left is DiffOpExp){
-            translateExpr(exp.left) + " =" + translateExpr(exp.right)
-        } else throw Exception("Only ODEs are supported for translation to KeYmaera X, LHS found: ${exp.left}")
+        return proofObligation(defs, prob, path, file, fields+extraFields, tactic)
     }
 
 }
 
-fun extractInitial(mImpl : MethodImpl) : Guard?{
-    val lead = mImpl.block.getStmt(0)
-    return if(lead is AwaitStmt && (lead.guard is DifferentialGuard || lead.guard is DurationGuard)){
-        lead.guard
-    }else null
-}
-
-
-fun extractImpl(mImpl: MethodImpl) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
-    return extractBlock(mImpl.block,extractInitial(mImpl) != null)
-}
-
-
-fun extractBlock(block: Block, skipFirst : Boolean) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
-    val map : PlaceMap = mutableMapOf()
-    val trans = translateStmt(block, emptySet(), map, skipFirst)
-    return Triple(trans.first, trans.second, map)
-}
 
