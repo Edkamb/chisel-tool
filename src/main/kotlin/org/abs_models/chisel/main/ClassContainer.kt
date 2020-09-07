@@ -8,12 +8,12 @@ const val TIMEVARIABLE = "tv"
 const val ZENOLIMITVARIABLE = "zlimitvar"
 
 //manages the proof obligations for a certain class
-class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer(){
-    private val name : String = cDecl.name
+class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : CodeContainer() {
+    private val name: String = cDecl.name
 
     //these are unprocessed user inputs
-    private val pre = extractSpec(cDecl, "Requires")+" & $CONTRACTVARIABLE = 1"
-    private val inv =  extractSpec(cDecl.physical, "ObjInv")
+    private val pre = extractSpec(cDecl, "Requires") + " & $CONTRACTVARIABLE = 1"
+    private val inv = extractSpec(cDecl.physical, "ObjInv")
     private val trPh = extractPhysical(cDecl.physical)
     private var ctrlRegions = mutableListOf<String>()
 
@@ -23,7 +23,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         fields.addAll(cDecl.physical.fields.map { it.name })
 
         //for the controlled Region we ensure that the class is controllable and fall back to uniform regions if it is not
-        if(reg == RegionOption.CtrlRegion) {
+        if (reg == RegionOption.CtrlRegion) {
             for (mImpl in cDecl.methods) {
                 if (isController(mImpl)) ctrlRegions.add(getCtrlRegion(mImpl))
             }
@@ -31,13 +31,13 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         }
     }
 
-    private fun getCtrlRegion(mImpl: MethodImpl) : String{
-        val init =  extractInitial(mImpl)
+    private fun getCtrlRegion(mImpl: MethodImpl): String {
+        val init = extractInitial(mImpl)
         return translateGuard(init)
     }
 
-    private fun getRegionString(connector : String = " | ") : String {
-        if(ctrlRegions.isEmpty()) return "true"
+    private fun getRegionString(connector: String = " | "): String {
+        if (ctrlRegions.isEmpty()) return "true"
         return ctrlRegions.joinToString(connector) { "($it)" }
     }
 
@@ -49,10 +49,10 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
      *   - last statement is an asynchronous recursive call
      */
     private fun isController(mImpl: MethodImpl): Boolean {
-        if(extractInitial(mImpl) == null) return false
-        if(cDecl.initBlock == null) return false
-        val finalCall =  mImpl.block.getStmt(mImpl.block.numStmt-1)
-        if(finalCall is ExpressionStmt && finalCall.exp is AsyncCall) {
+        if (extractInitial(mImpl) == null) return false
+        if (cDecl.initBlock == null) return false
+        val finalCall = mImpl.block.getStmt(mImpl.block.numStmt - 1)
+        if (finalCall is ExpressionStmt && finalCall.exp is AsyncCall) {
             val vv = finalCall.exp as AsyncCall
             if (vv.callee is ThisExp && vv.methodSig.matches(mImpl.methodSig)) {
                 for (i in 1 until mImpl.block.numStmt - 1) {
@@ -67,25 +67,31 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
     }
 
 
-    override fun regionFor(extra : String, call : Set<MethodSig>) : String =
-        when(reg) {
+    override fun regionFor(extra: String, call: Set<MethodSig>, forceBasic: Boolean): String {
+        if (forceBasic) {
+            return "{$trPh & true}"
+        }
+        return when (reg) {
             RegionOption.BasicRegion -> {
                 "{$trPh & true}"
             }
             RegionOption.UniformRegion -> {
                 val guards = call.map { extractInitial(find(it, cDecl)) }
-                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
+                val dGuards =
+                    guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
                 val region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
                 " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
             }
             RegionOption.CtrlRegion -> {
                 val guards = call.map { extractInitial(find(it, cDecl)) }
-                val dGuards = guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
+                val dGuards =
+                    guards.filterIsInstance<DifferentialGuard>().map { "!(" + translateGuard(it.condition) + ")" }
                 var region = if (dGuards.isEmpty()) "true" else dGuards.joinToString("&")
                 region = "$region & !(${getRegionString()})"
                 " $TIMEVARIABLE := 0; {$trPh, $TIMEVARIABLE' = 1 & $region & $extra}"
             }
         }
+    }
 
 
     /**
@@ -102,7 +108,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         }
         val runImpl = cDecl.initBlock
         var transRet = Triple<DlStmt, Set<MethodSig>, PlaceMap>(DlSkip, emptySet(), mutableMapOf())
-        if(runImpl != null) transRet = extractBlock(runImpl,false)
+        if(runImpl != null) transRet = extractBlock(runImpl,false, inv)
 
         val runSig = cDecl.methods.map { it.methodSig }.firstOrNull { it.name == "run" }
         if(runSig != null)
@@ -142,7 +148,7 @@ class ClassContainer(val cDecl : ClassDecl, private val reg : RegionOption) : Co
         } else "true"
 
         val init = translateGuard(extractInitial(mDecl))
-        val transRet  = extractImpl(mDecl)
+        val transRet  = extractImpl(mDecl, inv)
         val post = "$CONTRACTVARIABLE = 1 & $inv & $sPec"
 
         val extraFields =  collect(VarUse::class.java,mDecl).map { it.name }

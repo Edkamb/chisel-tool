@@ -38,16 +38,17 @@ fun findInterfaceDecl(methodImpl: MethodImpl, classDecl: ClassDecl) : MethodSig?
     return null
 }
 
-fun extractBlock(block: Block, skipFirst : Boolean) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
+fun extractBlock(block: Block, skipFirst : Boolean, inv : String = "true") : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
     val map : PlaceMap = mutableMapOf()
-    val trans = translateStmt(block, emptySet(), map, skipFirst)
+    val trans = translateStmt(block, emptySet(), map, skipFirst, inv)
     return Triple(trans.first, trans.second, map)
 }
 
-fun extractImpl(mImpl: MethodImpl) : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
+fun extractImpl(mImpl: MethodImpl, inv: String = "true") : Triple<DlStmt, Set<MethodSig>, PlaceMap>{
     return extractBlock(
         mImpl.block,
-        extractInitial(mImpl) != null
+        extractInitial(mImpl) != null,
+        inv
     )
 }
 

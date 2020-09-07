@@ -12,9 +12,12 @@ class C {
     		Real v = -1: v' = 0;
     	}
     Unit m(){
-        await diff this.x <= 0;
+        await diff x >= 0;
         v = 1;
-        await diff this.x >= 10;
-        v = 0;
+        Fut<Unit> f = this!m();
+        f.get;
+        v = -1;
     }
 }
+
+{}

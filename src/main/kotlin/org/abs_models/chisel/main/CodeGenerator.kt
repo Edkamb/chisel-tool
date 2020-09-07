@@ -14,7 +14,7 @@ open class CodeContainer{
         TIMEVARIABLE
     )
 
-    open fun regionFor(extra : String, call : Set<MethodSig>) : String= "true"
+    open fun regionFor(extra : String, call : Set<MethodSig>, forceBasic: Boolean = false) : String= "true"
 
 
     protected fun proofObligation(extraDefs: String,
@@ -143,7 +143,7 @@ open class CodeContainer{
 
         var prog = transRet.first.prettyPrint(2)
         for(entry in transRet.third){
-            prog = prog.replace(entry.key,"([${regionFor(entry.value.first, entry.value.second)}]$inv)")
+            prog = prog.replace(entry.key,"([${regionFor(entry.value.first, entry.value.second, entry.value.third)}]$inv)")
         }
 
 

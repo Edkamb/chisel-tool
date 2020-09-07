@@ -2,10 +2,14 @@ package org.abs_models.chisel.main
 
 import abs.frontend.ast.*
 
-typealias PlaceMap = MutableMap<String, Pair<String, Set<MethodSig>>>
+typealias PlaceMap = MutableMap<String, Triple<String, Set<MethodSig>, Boolean>>
 
 
-fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders: PlaceMap, skipFirst : Boolean = false)
+fun translateStmt(stmt: Stmt?,
+                  called: Set<MethodSig> = emptySet(),
+                  placeholders: PlaceMap,
+                  skipFirst : Boolean = false,
+                  inv : String = "true")
         : Pair<DlStmt,Set<MethodSig>>{
     if(stmt == null) return Pair(DlSkip, called)
     when(stmt){
@@ -14,7 +18,7 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
                 is PureExp -> Pair(DlAssign(stmt.`var`.toString(),translateExpr(stmt.getChild(2) as PureExp))
                                  , called)
                 else -> {
-                    val inner = translateSideExpr(stmt.getChild(2) as EffExp)
+                    val inner = translateSideExpr(stmt.getChild(2) as EffExp, placeholders, inv)
                     val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
                     Pair(DlSeq(inner.first, DlNonDetAssign(stmt.`var`.toString())), called + innerSet)
                 }
@@ -24,8 +28,8 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
             return  Pair(DlAssign(RESULTVARIABLE, translateExpr(stmt.retExp as PureExp)), called)
         }
         is IfStmt -> {
-            val left = translateStmt(stmt.then, called, placeholders)
-            val right = translateStmt(stmt.`else`, called, placeholders)
+            val left = translateStmt(stmt.then, called, placeholders, skipFirst, inv)
+            val right = translateStmt(stmt.`else`, called, placeholders, skipFirst, inv)
             val dlRet =
                 DlBlock(DlOr(DlSeq(DlCheck(translateExpr(stmt.condition)),left.first)
                            , DlSeq(DlCheck("(!"+translateExpr(stmt.condition)+")"),right.first)))
@@ -34,7 +38,7 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
         is ExpressionStmt -> {
             return if(stmt.exp is PureExp) Pair(DlSkip,called)
                    else {
-                val inner = translateSideExpr(stmt.exp as EffExp)
+                val inner = translateSideExpr(stmt.exp as EffExp, placeholders, inv)
                 val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
                 return Pair(inner.first, called + innerSet)
             }
@@ -42,7 +46,7 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
         is VarDeclStmt -> {
             return if(stmt.varDecl.initExp is PureExp) Pair(DlAssign(stmt.varDecl.name,translateExpr(stmt.varDecl.initExp as PureExp)),called)
             else{
-                val inner = translateSideExpr(stmt.varDecl.initExp as EffExp)
+                val inner = translateSideExpr(stmt.varDecl.initExp as EffExp, placeholders, inv)
                 val innerSet: Set<MethodSig> = if(inner.second != null) setOf(inner.second!!) else emptySet()
                 return Pair(DlSeq(inner.first,DlNonDetAssign(stmt.varDecl.name)), called + innerSet)
             }
@@ -53,7 +57,7 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
             return targetList.fold(Pair(DlSkip as DlStmt,called), {
                 acc, nx
                 ->
-                val inner = translateStmt(nx, acc.second, placeholders)
+                val inner = translateStmt(nx, acc.second, placeholders, skipFirst, inv)
                 Pair(DlSeq(acc.first, inner.first),inner.second)
             })
         }
@@ -61,10 +65,10 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
             if(stmt.guard is DurationGuard) throw Exception("Translation not supported yet: $stmt")
             val trans = translateGuard( stmt.guard)
             val myName = getNewPlaceholderName()
-            placeholders[myName] = Pair(trans, called)
+            placeholders[myName] = Triple(trans, called, false)
 
             val dlRet = DlBlock(DlOr(
-                  DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck(trans))
+                  DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck("($trans & $inv)"))
                 , DlSeq(DlSeq(DlCheck("(!$myName)"),DlAnon),
                         DlSeq(DlAssign(CONTRACTVARIABLE,"0"),DlCheck(trans)))
             ))
@@ -79,7 +83,9 @@ fun translateStmt(stmt: Stmt?, called: Set<MethodSig> = emptySet(), placeholders
     }
 }
 
-fun translateSideExpr(exp : EffExp) : Pair<DlStmt,MethodSig?> {
+fun translateSideExpr(exp : EffExp,
+                      placeholders: PlaceMap,
+                      inv : String = "true") : Pair<DlStmt,MethodSig?> {
     when (exp) {
         is AsyncCall -> {
             val mSig = exp.methodSig
@@ -110,8 +116,16 @@ fun translateSideExpr(exp : EffExp) : Pair<DlStmt,MethodSig?> {
                         DlAssign(CONTRACTVARIABLE, "0"))))
             return Pair(dlRet,null)
         }
-        is GetExp -> { //todo: add me...
-            throw Exception("Translation not supported yet: $exp")
+        is GetExp -> {
+            val myName = getNewPlaceholderName()
+            placeholders[myName] = Triple("true", emptySet(), true)
+
+            val dlRet = DlBlock(DlOr(
+                DlSeq(DlSeq(DlCheck(myName),DlAnon),DlCheck(inv))
+                , DlSeq(DlSeq(DlCheck("(!$myName)"),DlAnon),
+                    DlAssign(CONTRACTVARIABLE,"0"))
+            ))
+            return Pair(dlRet,null)
         }
         else -> {
             throw Exception("Translation not supported yet: $exp")
