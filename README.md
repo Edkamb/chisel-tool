@@ -39,26 +39,26 @@ For general information, run `java -jar build/libs/Chisel-0.2-all.jar --help `.
 To prove that the time controlled water tank example is free of locally Zeno behavior, run
 
 ```   
-java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --zeno=Demo.TTank Demo/Tank.abs
+java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --zeno=Demo.TTank examples/Demo/Tank.abs
 ```
  
 To prove safety of the self-controlled limited growth element, run
 
 ```   
-java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --full Demo/Growth.abs
+java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --full examples/Demo/Growth.abs
 ```   
 
 
 To prove safety of the locally controlled water tank, run
 
 ```   
-java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --uniform --class=Demo.LTank Demo/Tank.abs
+java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --uniform --class=Demo.LTank examples/Demo/Tank.abs
 ```   
  
 To prove safety of the remaining two water tanks (local and timed control) using controllers, run
 
 ```
-java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --control --class=Demo.CTank Demo/Tank.abs
-java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --control --class=Demo.TTank Demo/Tank.abs
+java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --control --class=Demo.CTank examples/Demo/Tank.abs
+java -jar ./build/libs/Chisel-0.2-all.jar --kyx <path/to/keymaerax.jar> --control --class=Demo.TTank examples/Demo/Tank.abs
 ```
   
