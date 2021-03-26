@@ -1,0 +1,49 @@
+module Demo;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
+
+type Real = Rat;
+
+interface IBillard {
+     Unit accelerate(Real r);
+     Unit push(Real a, Real b);
+     Unit leap();
+     [HybridSpec: Requires("extra >= 0")]
+     Unit incSize(Real extra);
+}
+[HybridSpec: Requires("top > 0 & bottom < 0 & right > 0 & left < 0")]
+class Billard(Real top, Real bottom,
+	      Real left, Real right,
+	      Real vx,
+	      Real vy) implements IBillard{
+
+[HybridSpec: ObjInv("top >= y & bottom <= y & right >= x & left <= x")]
+	physical{
+		Real x = 0: x' = vx;
+		Real y = 0: y' = vy;
+	}
+	{
+		this!ctrlTop(); this!ctrlRight();
+		this!ctrlBottom(); this!ctrlLeft();
+	}
+	Unit ctrlTop(){
+		await diff y >= top && vy >= 0; vy = -vy; this!ctrlTop();
+	}
+	Unit ctrlBottom(){
+		await diff y >= bottom && vy <= 0; vy = -vy; this!ctrlBottom();
+	}
+	Unit ctrlRight(){
+		await diff x >= right && vx >= 0; vx = -vx; this!ctrlRight();
+	}
+	Unit ctrlLeft(){
+		await diff x >= left && vx <= 0; vx = -vx; this!ctrlLeft();
+	}
+	Unit accelerate(Real r){ vx = vx*r; vy = vy*r; }
+    Unit push(Real a, Real b){ vx = vx + a; vy = vy + b; }
+    Unit leap(){
+        if( vx > 0 && right - x > 1) x = x + 1;
+        if( vx < 0 && x -left > 1) x = x - 1;
+    }
+    Unit incSize(Real extra){ top = top + extra; }
+}
+{}
