@@ -1,0 +1,49 @@
+module Demo;
+
+data HybridSpec =  ObjInv(String) | Ensures(String) | Requires(String) | Tactic(String);
+
+type Real = Rat;
+
+interface LV{
+  [HybridSpec: Requires("n >= 0")]
+  Unit toMig(Real n);
+  Unit setOther(LV nOther);
+}
+
+
+[HybridSpec: Requires("ix >= 0 & iy >= 0& alpha >= 0 & beta >= 0 & gamma >= 0 & dd >= 0")]
+class LVC(LV other, Real ix, Real iy, Real alpha, Real beta, Real dd, Real gamma) implements LV{
+
+[HybridSpec: ObjInv("x >= 0 & y >= 0& alpha >= 0 & beta >= 0 & gamma >= 0 & dd >= 0")]
+  physical{
+    Real x = ix : x' = alpha*x - beta*x*y;
+    Real y = iy : y' = dd*y*x - gamma*y;
+  }
+
+
+  { this!migrate(); }
+
+  Unit setOther(LV nOther){ this.other = nOther; }
+
+  Unit migrate(){
+    await duration(1,1);
+    if( x >= 10*y){
+        other!toMig(this.x/10);
+        this.x = this.x*(9/10);
+    }
+    this!migrate();
+  }
+
+  Unit toMig(Real n){
+    this.x = this.x + n;
+  }
+
+}
+
+// CHISEL does not support object references
+{
+  /*LV lv1 = new LVC(null, 5, 10, 1/100, 75/1000, 2/100, 5/1000);
+  LV lv2 = new LVC(null, 3, 20, 2/100, 5/1000, 2/100, 5/1000);
+  lv1!setOther(lv2);
+  lv2!setOther(lv1);*/
+}
